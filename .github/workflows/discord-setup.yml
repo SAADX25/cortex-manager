@@ -1,0 +1,39 @@
+name: Cortex Manager - Setup Discord Server
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Preview first; apply only when the plan looks correct"
+        type: choice
+        required: true
+        default: preview
+        options:
+          - preview
+          - apply
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cortex-manager-discord-setup
+  cancel-in-progress: false
+
+jobs:
+  setup:
+    name: ${{ inputs.mode }} Discord server layout
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Preview or apply server layout
+        env:
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          DISCORD_GUILD_ID: ${{ vars.DISCORD_GUILD_ID }}
+          RUN_MODE: ${{ inputs.mode }}
+        run: node index.mjs
