@@ -37,7 +37,7 @@ export function canManageChannel(snapshot, channel){
   b=(b & ~deny)|allow;
   const self=ws.find(w=>w.type===1 && w.id===snapshot.bot.id);
   if(self) b=(b & ~BigInt(self.deny))|BigInt(self.allow);
-  return has(b,P.ManageChannels);
+  return has(b,P.ViewChannel)&&has(b,P.ManageChannels)&&(![2,13].includes(channel.type)||has(b,P.Connect));
 }
 const bitstr = v=>String(v);
 export function overwrite(id,type,allow=0n,deny=0n){return {id,type,allow:bitstr(allow),deny:bitstr(deny)};}
@@ -51,11 +51,15 @@ export function createOverwrites(category, roleIds, guildId, botId, channel={}, 
   if(category.access==='staff') everyoneDeny |= P.ViewChannel;
   if(channel.readonly) everyoneDeny |= bits(['SendMessages','AddReactions','CreatePublicThreads','CreatePrivateThreads','SendMessagesInThreads']);
   if(channel.vipOnly) everyoneDeny |= bits(['ViewChannel','Connect']);
-  list.push(overwrite(everyoneId,0,0n,everyoneDeny));
+  const publicAllow=category.access==='public'&&!channel.vipOnly ? rw & ~everyoneDeny : 0n;
+  list.push(overwrite(everyoneId,0,publicAllow,everyoneDeny));
   if(mute) list.push(overwrite(mute,0,0n,muteDeny));
-  const accessKeys=category.access==='staff' ? category.staffKeys : (channel.vipOnly?['founder','coowner','admin','headmod','mod','vip']:[]);
+  const accessKeys=category.access==='staff' ? category.staffKeys : (channel.vipOnly?['admin','headmod','mod','vip']:[]);
   for(const key of accessKeys ?? []) if(roleIds[key])list.push(overwrite(roleIds[key],0,rw,0n));
-  if(channel.readonly) for(const key of ['founder','coowner','admin','headmod','mod']){
+  if(category.access==='staff'||channel.vipOnly||channel.readonly) {
+    for(const id of roleIds.leadership??[])list.push(overwrite(id,0,rw,0n));
+  }
+  if(channel.readonly) for(const key of ['admin','headmod','mod']){
     const id=roleIds[key];
     if(id){
       const item=list.find(w=>w.id===id&&w.type===0);

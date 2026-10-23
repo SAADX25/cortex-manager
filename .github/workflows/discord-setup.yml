@@ -1,77 +1,129 @@
-name: Cortex Manager PRO - Full Server Rebuild
+name: Cortex Manager - Reviewed Server Redesign
 
 on:
   workflow_dispatch:
     inputs:
       operation:
-        description: 'Preview is SAFE; rebuild replaces channels/roles permanently'
+        description: 'Preview is read only; rebuild requires a reviewed preview run'
         type: choice
         required: true
         default: preview
-        options:
-          - preview
-          - rebuild
+        options: [preview, rebuild]
+      preview_run_id:
+        description: 'REBUILD ONLY: successful preview Actions run ID on this exact commit'
+        type: string
+        required: false
       confirm_guild_id:
-        description: 'REBUILD ONLY: type your exact Discord Server ID'
+        description: 'REBUILD ONLY: exact Discord Server ID'
         type: string
         required: false
       confirm_delete:
-        description: 'REBUILD ONLY: type DELETE_ALL_OLD_CHANNELS_AND_ROLES'
+        description: 'REBUILD ONLY: DELETE_ALL_OLD_CHANNELS_AND_ROLES'
         type: string
         required: false
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
-  group: cortex-pro-${{ github.repository }}
+  group: cortex-redesign-${{ github.repository }}
   cancel-in-progress: false
 
 jobs:
-  server-setup:
-    name: Snapshot, preview and optional rebuild
+  preview:
+    if: inputs.operation == 'preview'
+    name: Preview - read only
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
+    env:
+      DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+      DISCORD_GUILD_ID: ${{ vars.DISCORD_GUILD_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Test safety and design
+        run: node --test
+      - name: Capture configuration, assignments and complete proposal (no writes)
+        run: node src/cli.mjs preview
+      - name: Show proposal
+        if: always()
+        shell: bash
+        run: |
+          if [ -f out/preview.md ]; then cat out/preview.md >> "$GITHUB_STEP_SUMMARY"; fi
+      - name: Save reviewed preview and member backup
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cortex-preview-${{ github.run_id }}
+          path: out/
+          retention-days: 7
+          if-no-files-found: error
+
+  rebuild:
+    if: inputs.operation == 'rebuild'
+    name: Rebuild - explicit confirmation required
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
     env:
       DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
       DISCORD_GUILD_ID: ${{ vars.DISCORD_GUILD_ID }}
       CONFIRM_GUILD_ID: ${{ inputs.confirm_guild_id }}
       CONFIRM_DELETE: ${{ inputs.confirm_delete }}
+      PREVIEW_RUN_ID: ${{ inputs.preview_run_id }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Install Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Validate project and permissions design
+      - name: Test safety and design
         run: node --test
-      - name: Export server configuration BEFORE modifications
-        run: node src/cli.mjs snapshot
-      - name: Upload initial snapshot BEFORE modifications
+      - name: Validate explicit confirmations before using Discord
+        run: node --input-type=module -e "import {assertConfirmation} from './src/safety.mjs'; assertConfirmation(process.env, process.env.DISCORD_GUILD_ID); if (!/^[1-9][0-9]*$/.test(process.env.PREVIEW_RUN_ID ?? '')) throw new Error('Successful preview_run_id required');"
+      - name: Verify preview provenance and code revision
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const {data: run} = await github.rest.actions.getWorkflowRun({
+              ...context.repo, run_id: Number(process.env.PREVIEW_RUN_ID)
+            });
+            if (run.head_sha !== context.sha || run.event !== 'workflow_dispatch' ||
+                run.conclusion !== 'success' || run.path !== '.github/workflows/discord-setup.yml' ||
+                run.repository.full_name !== `${context.repo.owner}/${context.repo.repo}`) {
+              throw new Error('Use a successful preview from this repository, workflow and exact commit.');
+            }
+      - name: Download the separately reviewed preview
+        uses: actions/download-artifact@v4
+        with:
+          name: cortex-preview-${{ inputs.preview_run_id }}
+          path: out/
+          run-id: ${{ inputs.preview_run_id }}
+          github-token: ${{ github.token }}
+      - name: Persist reviewed backup BEFORE any Discord writes
         uses: actions/upload-artifact@v4
         with:
           name: cortex-before-${{ github.run_id }}
-          path: out/snapshot.json
-          retention-days: 30
+          path: |
+            out/snapshot.json
+            out/approval.json
+            out/plan.json
+            out/preview.md
+          retention-days: 7
           if-no-files-found: error
-      - name: Preview or rebuild
-        run: node src/cli.mjs ${{ inputs.operation }}
-      - name: Add preview to workflow summary
+      - name: Create replacements, verify migrations, then remove approved obsolete entities
+        run: node src/cli.mjs rebuild
+      - name: Show reviewed proposal
         if: always()
         shell: bash
         run: |
-          if [ -f out/preview.md ]; then
-            cat out/preview.md >> "$GITHUB_STEP_SUMMARY"
-          fi
-      - name: Upload preview and execution reports
+          if [ -f out/preview.md ]; then cat out/preview.md >> "$GITHUB_STEP_SUMMARY"; fi
+      - name: Save complete execution and partial failure reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: cortex-report-${{ github.run_id }}
-          path: |
-            out/preview.md
-            out/execution-log.txt
-            out/result.json
-          if-no-files-found: ignore
-          retention-days: 30
+          name: cortex-result-${{ github.run_id }}
+          path: out/
+          retention-days: 7
+          if-no-files-found: warn
