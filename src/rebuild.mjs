@@ -1,10 +1,10 @@
 import {ROLES,CATEGORIES} from './design.mjs';
 import {botPermissions,effectiveRolePermissions,createOverwrites,canManageChannel} from './permissions.mjs';
-import {PROTECTED_ROLE_NAMES,roleProtection,protectedChannelIds,guardedAPI,fingerprint,digest} from './safety.mjs';
+import {isLeadershipRole,roleProtection,protectedChannelIds,guardedAPI,fingerprint,digest} from './safety.mjs';
 import {snapshot,memberInventory} from './api.mjs';
 
 function verifyLeadership(original,current) {
-  for(const r of original.roles.filter(r=>PROTECTED_ROLE_NAMES.includes(r.name))) {
+  for(const r of original.roles.filter(isLeadershipRole)) {
     const now=current.roles.find(x=>x.id===r.id);
     // Numeric positions change naturally as other roles are inserted/deleted.
     // Verify role data and relative order; never issue role reorder requests.
@@ -28,7 +28,7 @@ export async function rebuild(api,s,p,{record=()=>{},save=()=>{},capture=snapsho
     persist();
     if(p.blockers.length)throw new Error(p.blockers.join(' | '));
     if(fingerprint(await capture(api,s.guild.id))!==fingerprint(s))throw new Error('Server configuration or member assignments changed since preview. Run a fresh preview.');
-    const roleIds={...p.reusedRoles,...p.preservedRoles,leadership:s.roles.filter(r=>PROTECTED_ROLE_NAMES.includes(r.name)).map(r=>r.id)};
+    const roleIds={...p.reusedRoles,...p.preservedRoles,leadership:s.roles.filter(isLeadershipRole).map(r=>r.id)};
     const botBits=botPermissions(s),keptChannels=new Set(p.keepChannels.map(c=>c.id));
     result.phase='creation';persist();
     // Discord inserts each new role at the bottom. Create staff first, then

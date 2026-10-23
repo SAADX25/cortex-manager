@@ -1,11 +1,11 @@
 import {ROLES,CATEGORIES,ROLE_MIGRATIONS} from './design.mjs';
 import {P,botPermissions,has,canManageChannel,effectiveRolePermissions} from './permissions.mjs';
-import {PROTECTED_ROLE_NAMES,roleProtection,protectedChannelIds,digest,fingerprint} from './safety.mjs';
+import {isLeadershipRole,roleProtection,protectedChannelIds,digest,fingerprint} from './safety.mjs';
 
 export function validateDesign(migrations=ROLE_MIGRATIONS) {
   const roleKeys=new Set(),roleNames=new Set(),keys=new Set(),catKeys=new Set(),catNames=new Set();
   for(const r of ROLES) {
-    if(roleKeys.has(r.key)||roleNames.has(r.name)||PROTECTED_ROLE_NAMES.includes(r.name))throw new Error('Invalid/duplicate role '+r.name);
+    if(roleKeys.has(r.key)||roleNames.has(r.name)||isLeadershipRole(r))throw new Error('Invalid/duplicate role '+r.name);
     roleKeys.add(r.key);roleNames.add(r.name);
   }
   for(const c of CATEGORIES) {

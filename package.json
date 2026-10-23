@@ -1,14 +1,18 @@
 {
   "name": "cortex-manager-pro",
-  "version": "4.0.0",
+  "version": "6.0.0",
   "private": true,
   "type": "module",
-  "description": "Reviewed Discord redesign with permanent leadership protection and assignment-safe cleanup",
+  "description": "Arabic Windows Discord control panel, live server editor and reviewed safe redesign",
   "scripts": {
     "test": "node --test",
     "snapshot": "node src/cli.mjs snapshot",
     "preview": "node src/cli.mjs preview",
-    "rebuild": "node src/cli.mjs rebuild"
+    "rebuild": "node src/cli.mjs rebuild",
+    "desktop": "powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File desktop/Launch.ps1",
+    "desktop:build": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File desktop/Launch.ps1 -BuildOnly",
+    "desktop:demo": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File desktop/Launch.ps1 -Demo",
+    "desktop:test": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File desktop/Test.ps1"
   },
-  "engines": {"node": ">=22"}
+  "engines": {"node": ">=22.4"}
 }

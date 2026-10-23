@@ -2,5 +2,6 @@
 .env.*
 node_modules/
 out/
+CortexManager.exe
 *.log
 .DS_Store

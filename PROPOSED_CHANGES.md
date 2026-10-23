@@ -1,5 +1,11 @@
 # Proposed Discord redesign — ready for code review
 
+The project now also includes a local Arabic Windows app: `Start-Cortex-Manager.cmd`, `desktop/CortexManager.cs`, and `desktop/README.ar.md`. It offers Online/Offline bot presence, permission diagnostics and opt-in authorization links, read-only preview and separately confirmed rebuild. The existing protected-role policy and rebuild engine are reused. Creating/opening the app does not run a live Discord operation; testing uses a simulated server.
+
+Version 6 replaces the normal WinForms interface with `desktop/web/`, rendered by installed Microsoft Edge in an application window. It includes full-color emoji, crisp SVG icons, a modern Arabic layout, searchable live channel/category and role views, role colors, property/permission inspectors, drafts, before/after review and independently confirmed saves. `src/desktop-server.mjs` is an authenticated loopback-only bridge to fresh existing worker processes. Tokens remain in session memory and worker stdin, and reports belong to the current session. Demo mode uses labeled simulated data and disables live mutations. The single supported launcher is now `CortexManager.exe` in the project root; the command launcher builds/opens it. Older running applications and bot sessions are not stopped or overwritten.
+
+The editor retains its existing protection, live/source freshness checks, unknown permissions and member overwrites; it has no individual deletion or member mutation routes. The manual Windows build workflow packages the app and runs mocked tests without a Discord token. Source changes and UI testing do not execute a destructive rebuild.
+
 These are local proposed changes to the existing cortex-manager project. No live Discord preview, rebuild, role change or deletion has been run, and no code has been pushed to GitHub. Actual deletion IDs/counts and member migrations require a separate live read-only preview after code review.
 
 ## Safety changes

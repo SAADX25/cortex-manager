@@ -36,6 +36,15 @@ test('CLI preview is GET-only and rebuild rejects missing confirmation, tampered
   const requests=()=>fs.existsSync(requestLog)?fs.readFileSync(requestLog,'utf8').trim().split('\n').map(JSON.parse):[];
   writeMock(false);
   const preview=run('preview');assert.equal(preview.status,0,preview.stderr);
+  const worker=fileURLToPath(new URL('../src/desktop-worker.mjs',import.meta.url));
+  for(const operation of ['check','preview']) {
+    const desktop=spawnSync(process.execPath,['--import',pathToFileURL(mock).href,worker,operation],{
+      cwd,env,encoding:'utf8',input:JSON.stringify({token:'test-placeholder',guildId:ID})+'\n',
+    });
+    assert.equal(desktop.status,0,desktop.stderr);
+    assert.ok(!desktop.stdout.includes('test-placeholder'));
+    if(operation==='check')assert.equal(JSON.parse(desktop.stdout).event,'diagnostics');
+  }
   const output=path.join(cwd,'out');
   for(const file of ['preview.md','plan.json','approval.json','snapshot.json'])assert.ok(fs.existsSync(path.join(output,file)));
   const before=requests().length;assert.ok(before>0);assert.ok(requests().every(r=>r.method==='GET'));

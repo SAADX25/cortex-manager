@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Cortex Manager 6 | لوحة التحكم الحديثة</title>
+  <link rel="icon" href="./favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <svg class="svg-library" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><defs>
+    <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/></symbol>
+    <symbol id="i-hash" viewBox="0 0 24 24"><path d="M10 3 6 21M18 3l-4 18M4 8h17M3 16h17"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6l8-3Z"/><path d="m8 12 3 3 5-6"/></symbol>
+    <symbol id="i-spark" viewBox="0 0 24 24"><path d="m12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5L12 3ZM20 2v4M18 4h4"/></symbol>
+    <symbol id="i-key" viewBox="0 0 24 24"><circle cx="8" cy="9" r="5"/><path d="m12 13 8 8 2-2-3-3 2-2-3-3-2 2"/></symbol>
+    <symbol id="i-log" viewBox="0 0 24 24"><path d="M8 3h10a2 2 0 0 1 2 2v16H6a3 3 0 0 1-3-3V5a2 2 0 0 1 2-2h3ZM6 17h14M8 7h8M8 11h6"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24"><path d="m10 3-1 3-3 1-3-1-2 4 3 2v3l-1 2 3 3 3-1 3 1 1 3h4l1-3 3-1 3 1 2-4-3-2v-3l1-2-3-3-3 1-3-1-1-3h-4Z" transform="translate(1 0) scale(.85)"/><circle cx="12" cy="12" r="3"/></symbol>
+    <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 7v5h-5M4 17v-5h5M6 6a8 8 0 0 1 13 3M18 18A8 8 0 0 1 5 15"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></symbol>
+    <symbol id="i-voice" viewBox="0 0 24 24"><path d="m11 4-6 5H2v6h3l6 5V4ZM15 8a6 6 0 0 1 0 8M18 4a11 11 0 0 1 0 16"/></symbol>
+    <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7V5a2 2 0 0 1 2-2h5l3 4h7a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="11" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3M12 14v3"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
+    <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M20 12H4m6 6-6-6 6-6"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="m8 4 12 8-12 8V4Z"/></symbol>
+    <symbol id="i-stop" viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="3"/></symbol>
+    <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></symbol>
+    <symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="4"/><path d="M2 21v-3a6 6 0 0 1 12 0v3M17 5a4 4 0 0 1 0 8M18 16a5 5 0 0 1 4 5"/></symbol>
+    <symbol id="i-link" viewBox="0 0 24 24"><path d="m9 15 6-6M8 17l-2 2a4 4 0 0 1-6-6l5-5a4 4 0 0 1 6 0M16 7l2-2a4 4 0 0 1 6 6l-5 5a4 4 0 0 1-6 0" transform="translate(2 0) scale(.85)"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M6 18 18 6"/></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7h.01"/></symbol>
+  </defs></svg>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <a class="brand" href="#" aria-label="Cortex Manager"><img src="./favicon.svg" alt=""><span><strong>CORTEX</strong><small>MANAGER <b>6.0</b></small></span></a>
+      <div class="workspace-label">مساحة الإدارة <span>LOCAL</span></div>
+      <button class="server-switch" id="serverSwitch"><span class="guild-avatar" id="guildAvatar">🎮</span><span class="server-copy"><strong id="sidebarGuildName">اختر سيرفرك</strong><small id="sidebarGuildId">اربط البوت للبدء</small></span><svg class="icon"><use href="#i-chevron"/></svg></button>
+      <div class="nav-label">إدارة المجتمع</div>
+      <nav id="navigation" aria-label="التنقل الرئيسي">
+        <button data-page="overview" class="nav-item active" aria-label="نظرة عامة" title="نظرة عامة"><svg class="icon"><use href="#i-grid"/></svg><span>نظرة عامة</span><i></i></button>
+        <button data-page="channels" class="nav-item" aria-label="الأقسام والقنوات" title="الأقسام والقنوات"><svg class="icon"><use href="#i-hash"/></svg><span>الأقسام والقنوات</span><b id="channelCountNav">—</b></button>
+        <button data-page="roles" class="nav-item" aria-label="الرتب والصلاحيات" title="الرتب والصلاحيات"><svg class="icon"><use href="#i-shield"/></svg><span>الرتب والصلاحيات</span><b id="roleCountNav">—</b></button>
+        <button data-page="redesign" class="nav-item" aria-label="تصميم السيرفر" title="تصميم السيرفر"><svg class="icon"><use href="#i-spark"/></svg><span>تصميم السيرفر</span><span class="tiny-badge">جديد</span></button>
+      </nav>
+      <div class="nav-label utility-label">أدوات البوت</div>
+      <nav aria-label="أدوات البوت">
+        <button data-page="permissions" class="nav-item" aria-label="فحص الصلاحيات" title="فحص الصلاحيات"><svg class="icon"><use href="#i-key"/></svg><span>فحص الصلاحيات</span></button>
+        <button data-page="logs" class="nav-item" aria-label="سجل النشاط" title="سجل النشاط"><svg class="icon"><use href="#i-log"/></svg><span>سجل النشاط</span></button>
+        <button data-page="settings" class="nav-item" aria-label="إعدادات الاتصال" title="إعدادات الاتصال"><svg class="icon"><use href="#i-settings"/></svg><span>إعدادات الاتصال</span></button>
+      </nav>
+      <div class="sidebar-bottom"><div class="safe-note"><span class="safe-icon"><svg class="icon"><use href="#i-shield"/></svg></span><strong>قيادتك محفوظة دائمًا</strong><p>OWNER وCO_OWNER<br>محميتان من التعديل والحذف.</p></div><div class="local-indicator"><span></span> يعمل محليًا على جهازك <svg class="icon"><use href="#i-lock"/></svg></div></div>
+    </aside>
+    <div class="main-shell">
+      <header class="topbar"><div class="breadcrumb"><span>Cortex Manager</span><svg class="icon"><use href="#i-chevron"/></svg><strong id="pageCrumb">نظرة عامة</strong></div><div class="top-actions"><span class="demo-indicator hidden" id="demoBadge">معاينة توضيحية</span><span class="connection-pill" id="connectionPill"><span></span><b>البوت غير متصل</b></span><button class="icon-button" id="refreshButton" title="تحديث بيانات السيرفر" aria-label="تحديث بيانات السيرفر"><svg class="icon"><use href="#i-refresh"/></svg></button><button class="profile-button" id="settingsShortcut" title="إعدادات الاتصال"><svg class="icon"><use href="#i-settings"/></svg></button></div></header>
+      <main id="main" tabindex="-1"></main>
+      <footer class="app-footer"><span><i></i> Cortex Manager <b>6.0 · Modern UI</b></span><span id="footerStatus">جاهز للاتصال بالسيرفر</span><span>صُمّم لمجتمعك <span class="footer-star">✦</span></span></footer>
+    </div>
+  </div>
+  <div class="toast-stack" id="toasts" role="status" aria-live="polite"></div>
+  <dialog id="confirmDialog"><form method="dialog"><button class="dialog-close icon-button" value="cancel" aria-label="إغلاق"><svg class="icon"><use href="#i-close"/></svg></button><div id="dialogContent"></div></form></dialog>
+  <script src="./app.js" defer></script>
+</body>
+</html>

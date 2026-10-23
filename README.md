@@ -1,6 +1,18 @@
-# Cortex Manager v4
+# Cortex Manager 6
 
 A manual redesign workflow for the existing `SAADX25/cortex-manager` project and its configured Discord server. The proposal contains **7 Arabic categories, 31 channel slots and 11 distinct colored roles**, with private staff and VIP areas. Read [PROPOSED_CHANGES.md](PROPOSED_CHANGES.md) before deploying the code.
+
+## Local Windows app
+
+Open **CortexManager.exe in the project root**, or double-click **Start-Cortex-Manager.cmd** to build/open it. Version 6 uses installed Microsoft Edge in application mode, with a modern Arabic dashboard, scalable SVG icons, full-color emoji, readable typography, searchable channel/category and role views, and dedicated inspectors. It opens as a Windows application window. Keep the complete project folder beside the executable. Windows, Microsoft Edge, Node.js 22.4+ and .NET Framework 4.8 are required; administrator elevation is not required. See the [Arabic desktop guide](desktop/README.ar.md).
+
+The app shows actual server counts after you explicitly connect. Create categories, text/voice channels and roles; edit names, parent categories, topics, slowmode, voice limits, role colors, role permission flags and channel overwrite states. Each change has a read-only before/after review and explicit Save confirmation. The editor preserves unknown permission bits, member overwrites and untouched entries; protected entities are read-only. Source/configuration drift invalidates approval. Each save snapshots configuration before a single POST/PATCH and writes `edit-result.json`; no editor operation deletes entities or changes member-role assignments. Reports and log events are formatted for review.
+
+The supported binary is now **`CortexManager.exe` at the project root**, marked **MODERN 6** inside the interface. Both the command launcher and `npm run desktop` use it. Old executables under `out/desktop/` are legacy; they are left intact so a running bot is not interrupted. No saved legacy token is read. Version 6 keeps the token in session memory and passes it to workers through stdin; it does not save it in browser storage. Close the old app yourself before starting a second Online connection.
+
+`npm run desktop:demo` opens a clearly labeled demonstration with simulated channels/roles and disabled Discord writes. The normal app starts disconnected, with no simulated server and no automatic Discord calls. Its per-launch HTTP service binds only to 127.0.0.1, authenticates API requests with a random capability, rejects foreign origins, serializes jobs, and exposes a fixed set of actions and current-session reports. The window uses a dedicated Edge profile under `out/desktop-modern/`; closing it stops this app's presence connection after a short reload grace period. An active rebuild is allowed to finish.
+
+Each session stores reviews and reports under `out/desktop-modern/sessions/session-.../out/`. Opening another session requires a new preview; rebuilding requires reading the proposal and manually entering the guild ID and deletion phrase. The Online connection is independent of rebuild jobs and requires leaving the app/computer online. GitHub Actions still offers the separate manual Discord workflow; **Build Windows desktop app** is a manual build-only workflow that packages the application without connecting to Discord.
 
 ## Permanent preservation
 
@@ -58,13 +70,13 @@ The write allowlist has no guild deletion, kick, ban, member-removal, full membe
 
 The public Arabic sections cover getting started, community chat/media, gaming squads, voice lounges and help. Staff headquarters and security notes are private; a VIP lounge has restricted access. Existing Administrator roles bypass channel overwrites and keep their current permissions.
 
-The Muted role uses channel overwrites for ordinary members. Other role/member allow overwrites and Administrator can override it; use Discord's native timeout for reliable moderation. The workflow does not kick, ban or time out anyone. Support, verification and logging channels are organizational spaces; ticketing, verification, leveling and automatic audit bots are not implemented here. The bot may appear offline because this project uses REST rather than a permanent Gateway connection.
+The Muted role uses channel overwrites for ordinary members. Other role/member allow overwrites and Administrator can override it; use Discord's native timeout for reliable moderation. The workflow does not kick, ban or time out anyone. Support, verification and logging channels are organizational spaces; ticketing, verification, leveling and automatic audit bots are not implemented here. CLI and GitHub Actions use REST and do not keep the bot online. The optional Windows app can maintain a separate Gateway presence connection.
 
 Discord's channel list excludes threads. Deleting a parent channel also destroys its threads/history. Hidden channels may be absent from the API response when Discord channel obfuscation is enabled; the plan covers the inventory Discord returns and cannot manage unseen channels.
 
 ## Local development
 
-Use Node.js 22 or later, with no external npm packages:
+Use Node.js 22.4 or later, with no external npm packages:
 
 ```powershell
 npm test

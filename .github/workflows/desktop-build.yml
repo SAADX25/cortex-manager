@@ -1,0 +1,33 @@
+name: Build Windows desktop app
+
+# Builds an application artifact only. This workflow has no Discord secret,
+# server connection or automatic rebuild trigger.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm test
+      - run: npm run desktop:test
+      - name: Package application folder
+        shell: pwsh
+        run: |
+          $package = Join-Path $env:RUNNER_TEMP 'Cortex-Manager-6'
+          New-Item -ItemType Directory -Path $package | Out-Null
+          Copy-Item -LiteralPath 'CortexManager.exe','Start-Cortex-Manager.cmd','package.json','README.md','PROPOSED_CHANGES.md' -Destination $package
+          Copy-Item -LiteralPath 'src','desktop','test','.github' -Destination $package -Recurse
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Cortex-Manager-6-Windows
+          path: ${{ runner.temp }}/Cortex-Manager-6/
+          retention-days: 7

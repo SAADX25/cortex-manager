@@ -2,9 +2,10 @@ import {createHash} from 'node:crypto';
 
 export const PROTECTED_ROLE_NAMES = Object.freeze(['★ OWNER ★', '★ CO_OWNER ★']);
 export const CONFIRMATION = 'DELETE_ALL_OLD_CHANNELS_AND_ROLES';
+export const isLeadershipRole = role => ['★OWNER★','★CO_OWNER★','★COOWNER★'].includes(String(role.name).normalize('NFKC').replace(/[\s\u200b-\u200d\uFEFF\uFE0E\uFE0F]/g,'').toUpperCase());
 
 export function roleProtection(s, r) {
-  if (PROTECTED_ROLE_NAMES.includes(r.name)) return 'permanent OWNER/CO_OWNER role';
+  if (isLeadershipRole(r)) return 'permanent OWNER/CO_OWNER role';
   if (r.id === s.guild.id) return '@everyone';
   if (r.managed || r.tags?.bot_id || r.tags?.integration_id || 'premium_subscriber' in (r.tags ?? {})) return 'Discord/integration-managed role';
   if (s.botMember.roles.includes(r.id)) return 'role assigned to Cortex Manager';
@@ -31,7 +32,7 @@ export function configuration(s) {
   const guildKeys = ['id', 'owner_id', 'rules_channel_id', 'public_updates_channel_id', 'safety_alerts_channel_id', 'system_channel_id', 'afk_channel_id', 'widget_channel_id', 'features'];
   const channelKeys = ['id', 'name', 'type', 'parent_id', 'position', 'topic', 'nsfw', 'rate_limit_per_user', 'user_limit', 'bitrate', 'flags'];
   return {
-    guild: Object.fromEntries(guildKeys.map(k => [k, s.guild[k] ?? null])),
+    guild: Object.fromEntries(guildKeys.map(k => [k, k === 'features' ? [...(s.guild.features ?? [])].sort() : s.guild[k] ?? null])),
     bot: s.bot.id, botRoles: [...s.botMember.roles].sort(),
     roles: ordered(s.roles),
     channels: ordered(s.channels).map(c => ({...Object.fromEntries(channelKeys.map(k => [k, c[k] ?? null])),
