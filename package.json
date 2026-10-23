@@ -1,0 +1,14 @@
+{
+  "name": "cortex-manager-pro",
+  "version": "3.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Manual, two-gate Discord server redesign using GitHub Actions and the official REST API",
+  "scripts": {
+    "test": "node --test",
+    "snapshot": "node src/cli.mjs snapshot",
+    "preview": "node src/cli.mjs preview",
+    "rebuild": "node src/cli.mjs rebuild"
+  },
+  "engines": {"node": ">=22"}
+}

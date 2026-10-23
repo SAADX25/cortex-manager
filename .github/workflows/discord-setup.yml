@@ -1,39 +1,77 @@
-name: Cortex Manager - Setup Discord Server
+name: Cortex Manager PRO - Full Server Rebuild
 
 on:
   workflow_dispatch:
     inputs:
-      mode:
-        description: "Preview first; apply only when the plan looks correct"
+      operation:
+        description: 'Preview is SAFE; rebuild replaces channels/roles permanently'
         type: choice
         required: true
         default: preview
         options:
           - preview
-          - apply
+          - rebuild
+      confirm_guild_id:
+        description: 'REBUILD ONLY: type your exact Discord Server ID'
+        type: string
+        required: false
+      confirm_delete:
+        description: 'REBUILD ONLY: type DELETE_ALL_OLD_CHANNELS_AND_ROLES'
+        type: string
+        required: false
 
 permissions:
   contents: read
 
 concurrency:
-  group: cortex-manager-discord-setup
+  group: cortex-pro-${{ github.repository }}
   cancel-in-progress: false
 
 jobs:
-  setup:
-    name: ${{ inputs.mode }} Discord server layout
+  server-setup:
+    name: Snapshot, preview and optional rebuild
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 25
+    env:
+      DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+      DISCORD_GUILD_ID: ${{ vars.DISCORD_GUILD_ID }}
+      CONFIRM_GUILD_ID: ${{ inputs.confirm_guild_id }}
+      CONFIRM_DELETE: ${{ inputs.confirm_delete }}
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
-      - name: Set up Node.js
+      - name: Install Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '24'
-      - name: Preview or apply server layout
-        env:
-          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
-          DISCORD_GUILD_ID: ${{ vars.DISCORD_GUILD_ID }}
-          RUN_MODE: ${{ inputs.mode }}
-        run: node index.mjs
+          node-version: '22'
+      - name: Validate project and permissions design
+        run: node --test
+      - name: Export server configuration BEFORE modifications
+        run: node src/cli.mjs snapshot
+      - name: Upload initial snapshot BEFORE modifications
+        uses: actions/upload-artifact@v4
+        with:
+          name: cortex-before-${{ github.run_id }}
+          path: out/snapshot.json
+          retention-days: 30
+          if-no-files-found: error
+      - name: Preview or rebuild
+        run: node src/cli.mjs ${{ inputs.operation }}
+      - name: Add preview to workflow summary
+        if: always()
+        shell: bash
+        run: |
+          if [ -f out/preview.md ]; then
+            cat out/preview.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Upload preview and execution reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cortex-report-${{ github.run_id }}
+          path: |
+            out/preview.md
+            out/execution-log.txt
+            out/result.json
+          if-no-files-found: ignore
+          retention-days: 30
