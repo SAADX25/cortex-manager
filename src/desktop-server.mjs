@@ -15,7 +15,7 @@ import {plan,renderPreview} from './plan.mjs';
 import {prepareEdit,editSummary} from './editor.mjs';
 
 const ROOT=fileURLToPath(new URL('../',import.meta.url));
-const ACTIONS=new Set(['check','inventory','online','stop','preview','rebuild','edit-preview','edit-apply','shutdown','client-closed']);
+const ACTIONS=new Set(['connect','check','inventory','online','stop','preview','rebuild','edit-preview','edit-apply','shutdown','client-closed']);
 const REPORTS=new Set(['preview.md','plan.json','approval.json','snapshot.json','result.json','execution-log.txt','failure.json','edit-preview.txt','edit-plan.json','edit-snapshot.json','edit-result.json','edit-conflict.json']);
 const STATIC=new Map([['/','index.html'],['/index.html','index.html'],['/app.js','app.js'],['/styles.css','styles.css'],['/favicon.svg','favicon.svg']]);
 const TYPES={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml; charset=utf-8','.json':'application/json; charset=utf-8','.md':'text/plain; charset=utf-8','.txt':'text/plain; charset=utf-8'};
@@ -71,7 +71,7 @@ export async function createDesktopServer({root=ROOT,sessionDir,runWorker=spawnD
   sessionDir=path.resolve(sessionDir);fs.mkdirSync(path.join(sessionDir,'out'),{recursive:true});
   const key=randomBytes(32).toString('hex'),secrets=new Set();
   let credentials={token:'',guildId:''},job=null,presenceWorker=null,presenceStopping=null,closed=false,lastSeen=0,activeOperation=null,clientClosedTimer=null;
-  const startedAt=Date.now();
+  const startedAt=Date.now();let presenceEpoch=0;
   let resolveDone;const done=new Promise(resolve=>{resolveDone=resolve;});
   const demoSnapshot=demo?desktopDemoSnapshot():null;
   const state={version:'6.0',demo:!!demo,busy:false,status:demo?'demo':'disconnected',online:false,connected:false,presence:{status:demo?'demo':'offline'},diagnostics:demo?diagnostics(demoSnapshot):null,
@@ -82,7 +82,7 @@ export async function createDesktopServer({root=ROOT,sessionDir,runWorker=spawnD
   const readReport=name=>{if(!REPORTS.has(name))return null;try{return fs.readFileSync(path.join(sessionDir,'out',name),'utf8');}catch{return null;}};
   const jsonReport=name=>{try{return JSON.parse(readReport(name));}catch{return null;}};
   const files=()=>[...REPORTS].flatMap(name=>{try{const stat=fs.statSync(path.join(sessionDir,'out',name));return stat.isFile()?[{name,size:stat.size}]:[];}catch{return [];}});
-  const publicState=()=>scrub({...state,hasCredentials:Boolean(credentials.token),inventory:state.diagnostics?.inventory??null,guildId:credentials.guildId||state.diagnostics?.guildId||'',
+  const publicState=()=>scrub({...state,presenceActive:Boolean(presenceWorker||presenceStopping),hasCredentials:Boolean(credentials.token),inventory:state.diagnostics?.inventory??null,guildId:credentials.guildId||state.diagnostics?.guildId||'',
     reports:{files:files(),preview:state.preview?.summary??null,editPreview:state.editPreview?.summary??null}});
   const invalidate=()=>{state.preview=null;state.editPreview=null;};
   function acceptCredentials(config) {
@@ -100,7 +100,8 @@ export async function createDesktopServer({root=ROOT,sessionDir,runWorker=spawnD
     else if(event.event==='edit-preview'){state.editPreview=event.data;log('معاينة التعديل جاهزة للمراجعة.');}
     else if(event.event==='edit-applied'){state.result=event.data;invalidate();state.diagnostics=null;state.connected=false;log('اكتمل حفظ التعديل. حدّث السيرفر لرؤية النتيجة.');}
   };
-  function launch(mode,config,online=false) {
+  function launch(mode,config,online=false,connectAfter=false) {
+    const epoch=presenceEpoch;
     const options={cwd:sessionDir,root,onOutput:line=>output(line,mode),onError:line=>{state.error??=redact(line);log(line,'error');}};
     const handle=runWorker(mode,config,options);
     if(online){presenceWorker=handle;state.presence={status:'connecting'};state.status='connecting';
@@ -116,7 +117,9 @@ export async function createDesktopServer({root=ROOT,sessionDir,runWorker=spawnD
       if(mode==='rebuild'){state.result=jsonReport('result.json');invalidate();state.diagnostics=null;state.connected=false;}
       if(mode==='edit-apply')invalidate();
       if(result.code!==0){state.error=state.error??'تعذّرت العملية. راجع سجل التشغيل.';log('انتهت العملية دون تطبيق الخطوات المتبقية.','error');}
-      else {state.error=null;log(mode==='preview'?'خطة إعادة البناء جاهزة للمراجعة؛ لم يتغير السيرفر.':'اكتملت العملية.','success');}
+      else {state.error=null;log(mode==='preview'?'خطة إعادة البناء جاهزة للمراجعة؛ لم يتغير السيرفر.':'اكتملت العملية.','success');
+        if(connectAfter&&state.connected&&epoch===presenceEpoch&&!closed&&!presenceWorker&&!presenceStopping)launch('online',config,true);
+      }
     }).catch(error=>{state.error=redact(error.message);log(error.message,'error');}).finally(()=>{if(job===handle){job=null;state.busy=false;state.operation=null;activeOperation=null;}});
   }
   async function action(body) {
@@ -126,19 +129,25 @@ export async function createDesktopServer({root=ROOT,sessionDir,runWorker=spawnD
     if(name==='client-closed'){clearTimeout(clientClosedTimer);clientClosedTimer=setTimeout(()=>{if(!state.busy)close();},8000);clientClosedTimer.unref();return;}
     if(name==='shutdown'){if(job)throw Object.assign(new Error('انتظر اكتمال العملية قبل إغلاق البرنامج.'),{status:409});setTimeout(()=>close(),25).unref();return;}
     if(name==='stop'){
+      presenceEpoch++;
       if(!presenceStopping){const own=presenceWorker;presenceWorker=null;state.presence={status:'disconnecting'};state.status='disconnecting';
         presenceStopping=Promise.resolve().then(()=>own?.stop()).finally(()=>{presenceStopping=null;state.online=false;state.presence={status:'offline'};state.status=state.connected?'connected':'disconnected';});}
       await presenceStopping;return;
     }
     if(job)throw Object.assign(new Error('انتظر اكتمال العملية الحالية.'),{status:409});
     if(demo){
-      if(['rebuild','edit-apply','online'].includes(name))throw Object.assign(new Error('هذه نسخة عرض توضيحي؛ الاتصال والتعديلات الحقيقية معطّلة.'),{status:403});
+      if(['connect','rebuild','edit-apply','online'].includes(name))throw Object.assign(new Error('هذه نسخة عرض توضيحي؛ الاتصال والتعديلات الحقيقية معطّلة.'),{status:403});
       state.error=null;
       if(['check','inventory'].includes(name)){state.diagnostics=diagnostics(demoSnapshot);log('تم عرض بيانات توضيحية فقط.');return;}
       if(name==='preview'){const p=plan(demoSnapshot);state.preview={summary:renderPreview(demoSnapshot,p),approvalHash:p.approvalHash,plan:p,guildId:demoSnapshot.guild.id,ready:false};log('معاينة توضيحية؛ لا يمكن تنفيذ إعادة بناء في وضع العرض.');return;}
       if(name==='edit-preview'){const p=prepareEdit(demoSnapshot,config.editRequest);state.editPreview={approvalHash:p.approvalHash,summary:editSummary(p),changes:p.changes};return;}
     }
     const auth=acceptCredentials(config);
+    if(name==='connect'){
+      if(presenceStopping)throw Object.assign(new Error('انتظر اكتمال إيقاف الاتصال ثم حاول مجددًا.'),{status:409});
+      invalidate();state.error=null;state.result=null;log('جارٍ تحميل السيرفر وتجهيز اتصال البوت…');
+      launch('inventory',auth,false,true);return;
+    }
     if(name==='online'){if(presenceWorker||presenceStopping)throw Object.assign(new Error('البوت متصل أو يجري تغيير الاتصال؛ انتظر اكتمال العملية.'),{status:409});state.error=null;launch(name,auth,true);return;}
     if(name==='rebuild'){
       if(config.confirmGuildId!==auth.guildId||config.confirmDelete!==CONFIRMATION)throw Object.assign(new Error('يتطلب التنفيذ كتابة رقم السيرفر وعبارة الحذف المطابقة.'),{status:400});

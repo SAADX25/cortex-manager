@@ -25,6 +25,20 @@ test('manual editor rejects leadership aliases, everyone, managed and high roles
   }
   const s=sample();for(const r of s.roles.filter(r=>r.id!==LEGACY))assert.throws(()=>prepareEdit(s,{...roleRequest(s),id:r.id,revision:revision('role',r)}));
 });
+
+test('raising only the bot role unlocks permission editing while leadership remains protected',()=>{
+  const s=sample(),target=s.roles.find(r=>r.id===LEGACY),botRole=s.roles.find(r=>r.id===BOT_ROLE);
+  target.position=21;
+  const locked=serverInventory(s);assert.equal(locked.botRole.id,BOT_ROLE);
+  assert.equal(locked.roles.find(r=>r.id===LEGACY).readOnlyReason,'role at or above the bot hierarchy');
+  assert.throws(()=>prepareEdit(s,{...roleRequest(s,{}),permissionChanges:{ManageMessages:true}}),/محمية/);
+  botRole.position=22;
+  const unlocked=serverInventory(s),role=unlocked.roles.find(r=>r.id===LEGACY);
+  assert.equal(role.revision,locked.roles.find(r=>r.id===LEGACY).revision);assert.equal(role.readOnlyReason,null);
+  assert.ok(unlocked.roles.filter(r=>r.name.includes('OWNER')).every(r=>r.readOnlyReason));
+  const edit=prepareEdit(s,{...roleRequest(s,{}),permissionChanges:{ManageMessages:true}});
+  assert.equal(BigInt(edit.body.permissions)&P.ManageMessages,P.ManageMessages);
+});
 test('manual role edit preserves unknown permission bits and never changes hierarchy/members',()=>{
   const s=sample(),r=s.roles.find(r=>r.id===LEGACY);r.permissions=String(1n<<60n);
   const p=prepareEdit(s,{...roleRequest(s),permissionChanges:{SendMessages:true}});

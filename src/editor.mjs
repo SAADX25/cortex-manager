@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import {snapshot} from './api.mjs';
-import {P,has,botPermissions,canManageChannel} from './permissions.mjs';
+import {P,has,botPermissions,botTopPosition,canManageChannel} from './permissions.mjs';
 import {digest,fingerprint,configuration,roleProtection,protectedChannelIds,isLeadershipRole} from './safety.mjs';
 
 export const CHANNEL_PERMISSIONS=['ViewChannel','SendMessages','ReadMessageHistory','AddReactions','EmbedLinks','AttachFiles','Connect','Speak','MoveMembers','ManageMessages','ManageChannels','ManageThreads','CreatePublicThreads','CreatePrivateThreads','SendMessagesInThreads'];
@@ -19,7 +19,9 @@ export function channelProtection(s,c) {
 }
 export function serverInventory(s) {
   const botBits=botPermissions(s);
+  const topRole=s.roles.find(r=>s.botMember.roles.includes(r.id)&&r.position===botTopPosition(s));
   return {guildId:s.guild.id,guildName:s.guild.name,capturedAt:s.captured_at,
+    botRole:topRole?{id:topRole.id,name:topRole.name,position:topRole.position}:null,
     permissions:Object.entries(P).map(([name,flag])=>({name,granted:has(botBits,flag)})),
     channelPermissionNames:CHANNEL_PERMISSIONS,
     roles:[...s.roles].sort((a,b)=>b.position-a.position).map(r=>({...roleFields(r),revision:revision('role',r),readOnlyReason:roleProtection(s,r),

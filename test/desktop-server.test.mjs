@@ -120,6 +120,27 @@ test('presence worker can be stopped independently and service close stops its o
   await s.close();assert.equal(s.calls[1].stopped,true);
 });
 
+test('combined connect loads the server before starting presence and reuses an existing connection',async t=>{
+  const s=await setup(t);
+  assert.equal((await s.action('connect',credentials)).status,202);
+  assert.equal(s.calls.length,1);assert.equal(s.calls[0].mode,'inventory');
+  s.calls[0].output({event:'diagnostics',data:diagnostics(sample())});s.calls[0].finish();
+  await s.settled();assert.equal(s.calls.length,2);assert.equal(s.calls[1].mode,'online');
+  assert.equal((await s.state()).presenceActive,true);
+  s.calls[1].output({event:'presence',status:'online',message:'Connected'});
+  await s.action('connect',credentials);assert.equal(s.calls[2].mode,'inventory');
+  s.calls[2].output({event:'diagnostics',data:diagnostics(sample())});s.calls[2].finish();
+  await s.settled();assert.equal(s.calls.length,3);assert.equal((await s.state()).online,true);
+});
+
+test('combined connect never starts presence after failed inventory or an explicit stop',async t=>{
+  const s=await setup(t);await s.action('connect',credentials);
+  s.calls[0].error('Inventory refused');s.calls[0].finish(1);await s.settled();assert.equal(s.calls.length,1);
+  await s.action('connect',credentials);await s.action('stop');
+  s.calls[1].output({event:'diagnostics',data:diagnostics(sample())});s.calls[1].finish();
+  await s.settled();assert.equal(s.calls.length,2);assert.equal((await s.state()).presenceActive,false);
+});
+
 test('explicit demo has rich Arabic inventory and refuses every real connection or mutation',async t=>{
   const s=await setup(t,{demo:true}),state=await s.state();
   assert.equal(state.demo,true);assert.equal(state.online,false);assert.ok(state.inventory.channels.length>30);assert.ok(state.inventory.roles.some(r=>r.name.includes('🎮')));
