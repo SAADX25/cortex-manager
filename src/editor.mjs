@@ -3,6 +3,7 @@ import path from 'node:path';
 import {snapshot} from './api.mjs';
 import {P,has,botPermissions,botTopPosition,canManageChannel} from './permissions.mjs';
 import {digest,fingerprint,configuration,roleProtection,protectedChannelIds,isLeadershipRole} from './safety.mjs';
+import {messageProtection} from './messages.mjs';
 
 export const CHANNEL_PERMISSIONS=['ViewChannel','SendMessages','ReadMessageHistory','AddReactions','EmbedLinks','AttachFiles','Connect','Speak','MoveMembers','ManageMessages','ManageChannels','ManageThreads','CreatePublicThreads','CreatePrivateThreads','SendMessagesInThreads'];
 const roleFields=r=>({id:r.id,name:r.name,color:r.colors?.primary_color??r.color??0,permissions:r.permissions,position:r.position,hoist:!!r.hoist,mentionable:!!r.mentionable,managed:!!r.managed,tags:r.tags??{}});
@@ -26,7 +27,7 @@ export function serverInventory(s) {
     channelPermissionNames:CHANNEL_PERMISSIONS,
     roles:[...s.roles].sort((a,b)=>b.position-a.position).map(r=>({...roleFields(r),revision:revision('role',r),readOnlyReason:roleProtection(s,r),
       flags:Object.entries(P).map(([name,flag])=>({name,granted:(BigInt(r.permissions)&flag)!==0n,canGrant:has(botBits,flag)}))})),
-    channels:[...s.channels].sort((a,b)=>(a.position??0)-(b.position??0)).map(c=>({...channelFields(c),revision:revision('channel',c),readOnlyReason:channelProtection(s,c),
+    channels:[...s.channels].sort((a,b)=>(a.position??0)-(b.position??0)).map(c=>({...channelFields(c),revision:revision('channel',c),readOnlyReason:channelProtection(s,c),messageReadOnlyReason:messageProtection(s,c),
       overwrites:(c.permission_overwrites??[]).map(w=>({...w,flags:CHANNEL_PERMISSIONS.map(name=>({name,state:(BigInt(w.allow)&P[name])!==0n?'allow':(BigInt(w.deny)&P[name])!==0n?'deny':'inherit'}))}))})),
   };
 }

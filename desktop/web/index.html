@@ -55,13 +55,14 @@
       <div class="sidebar-bottom"><div class="local-indicator"><span></span> يعمل محليًا على جهازك <svg class="icon"><use href="#i-lock"/></svg></div></div>
     </aside>
     <div class="main-shell">
-      <header class="topbar"><div class="breadcrumb"><span>Cortex Manager</span><svg class="icon"><use href="#i-chevron"/></svg><strong id="pageCrumb">نظرة عامة</strong></div><div class="top-actions"><span class="demo-indicator hidden" id="demoBadge">معاينة توضيحية</span><span class="connection-pill" id="connectionPill"><span></span><b>البوت غير متصل</b></span><button class="icon-button" id="refreshButton" title="تحديث بيانات السيرفر" aria-label="تحديث بيانات السيرفر"><svg class="icon"><use href="#i-refresh"/></svg></button><button class="profile-button" id="settingsShortcut" title="إعدادات الاتصال"><svg class="icon"><use href="#i-settings"/></svg></button></div></header>
+      <header class="topbar"><div class="breadcrumb"><span>Cortex Manager</span><svg class="icon"><use href="#i-chevron"/></svg><strong id="pageCrumb">نظرة عامة</strong></div><div class="topbar-tools"><span class="demo-indicator hidden" id="demoBadge">معاينة توضيحية</span><button type="button" class="language-switch" id="languageSwitch" aria-label="Switch to English" title="Switch to English" disabled><span aria-hidden="true">ع / EN</span><span id="languageSwitchLabel" translate="no">English</span></button></div></header>
       <main id="main" tabindex="-1"></main>
       <footer class="app-footer"><span><i></i> Cortex Manager <b>6.0 · Modern UI</b></span><span id="footerStatus">جاهز للاتصال بالسيرفر</span><span>صُمّم لمجتمعك <span class="footer-star">✦</span></span></footer>
     </div>
   </div>
   <div class="toast-stack" id="toasts" role="status" aria-live="polite"></div>
   <dialog id="confirmDialog"><form method="dialog"><button class="dialog-close icon-button" value="cancel" aria-label="إغلاق"><svg class="icon"><use href="#i-close"/></svg></button><div id="dialogContent"></div></form></dialog>
+  <script src="./i18n.js" defer></script>
   <script src="./app.js" defer></script>
 </body>
 </html>

@@ -13,11 +13,13 @@ import {P,bits} from './permissions.mjs';
 import {CONFIRMATION} from './safety.mjs';
 import {plan,renderPreview} from './plan.mjs';
 import {prepareEdit,editSummary} from './editor.mjs';
+import {createCredentialStore} from './credentials.mjs';
+import {prepareMessage,messagePreview} from './messages.mjs';
 
 const ROOT=fileURLToPath(new URL('../',import.meta.url));
-const ACTIONS=new Set(['connect','check','inventory','online','stop','preview','rebuild','edit-preview','edit-apply','shutdown','client-closed']);
-const REPORTS=new Set(['preview.md','plan.json','approval.json','snapshot.json','result.json','execution-log.txt','failure.json','edit-preview.txt','edit-plan.json','edit-snapshot.json','edit-result.json','edit-conflict.json']);
-const STATIC=new Map([['/','index.html'],['/index.html','index.html'],['/app.js','app.js'],['/styles.css','styles.css'],['/favicon.svg','favicon.svg']]);
+const ACTIONS=new Set(['message-preview','message-send','credentials-save','credentials-forget','connect','check','inventory','online','stop','preview','rebuild','edit-preview','edit-apply','shutdown','client-closed']);
+const REPORTS=new Set(['preview.md','plan.json','approval.json','snapshot.json','result.json','execution-log.txt','failure.json','edit-preview.txt','edit-plan.json','edit-snapshot.json','edit-result.json','edit-conflict.json','message-plan.json','message-preview.txt','message-result.json']);
+const STATIC=new Map([['/','index.html'],['/index.html','index.html'],['/app.js','app.js'],['/i18n.js','i18n.js'],['/styles.css','styles.css'],['/favicon.svg','favicon.svg']]);
 const TYPES={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml; charset=utf-8','.json':'application/json; charset=utf-8','.md':'text/plain; charset=utf-8','.txt':'text/plain; charset=utf-8'};
 const MAX_BODY=256*1024;
 
@@ -65,26 +67,30 @@ export function spawnDesktopWorker(mode,config,{cwd,root=ROOT,onOutput,onError})
   }};
 }
 
-export async function createDesktopServer({root=ROOT,sessionDir,runWorker=spawnDesktopWorker,demo=false,idleTimeoutMs=300000,startupTimeoutMs=120000,port=0}={}) {
+export async function createDesktopServer({root=ROOT,sessionDir,runWorker=spawnDesktopWorker,demo=false,credentialStore,idleTimeoutMs=300000,startupTimeoutMs=120000,port=0}={}) {
   root=path.resolve(root);
+  const preferencesFile=path.join(root,'out','desktop-modern',demo?'demo-preferences.json':'preferences.json');
+  let uiLanguage='ar';try{const p=JSON.parse(fs.readFileSync(preferencesFile,'utf8'));if(p.language==='en')uiLanguage='en';}catch{}
   if(!sessionDir){const base=path.join(root,'out','desktop-modern','sessions');fs.mkdirSync(base,{recursive:true});sessionDir=fs.mkdtempSync(path.join(base,'session-'));}
   sessionDir=path.resolve(sessionDir);fs.mkdirSync(path.join(sessionDir,'out'),{recursive:true});
   const key=randomBytes(32).toString('hex'),secrets=new Set();
   let credentials={token:'',guildId:''},job=null,presenceWorker=null,presenceStopping=null,closed=false,lastSeen=0,activeOperation=null,clientClosedTimer=null;
-  const startedAt=Date.now();let presenceEpoch=0;
+  const vault=credentialStore??createCredentialStore({root});let credentialsSaved=false,credentialLoadError=null;
+  if(!demo)try{const saved=await vault.load();if(saved){credentials=saved;secrets.add(saved.token);credentialsSaved=true;}}catch{credentialLoadError='تعذّرت قراءة البيانات المحفوظة. أدخل بيانات البوت مجددًا أو احذف البيانات المحفوظة.';}
+  const startedAt=Date.now();let presenceEpoch=0,credentialTask=null;
   let resolveDone;const done=new Promise(resolve=>{resolveDone=resolve;});
   const demoSnapshot=demo?desktopDemoSnapshot():null;
-  const state={version:'6.0',demo:!!demo,busy:false,status:demo?'demo':'disconnected',online:false,connected:false,presence:{status:demo?'demo':'offline'},diagnostics:demo?diagnostics(demoSnapshot):null,
-    preview:null,editPreview:null,logs:[],operation:null,result:null,error:null};
+  const state={version:'6.0',demo:!!demo,busy:false,status:demo?'demo':'disconnected',online:false,connected:false,presenceStartedAt:null,presence:{status:demo?'demo':'offline'},diagnostics:demo?diagnostics(demoSnapshot):null,
+    preview:null,editPreview:null,messagePreview:null,messageResult:null,logs:[],operation:null,result:null,error:credentialLoadError};
   const redact=value=>{let result=String(value??'');for(const secret of secrets)if(secret)result=result.split(secret).join('[محجوب]');return result;};
   const scrub=value=>typeof value==='string'?redact(value):Array.isArray(value)?value.map(scrub):value&&typeof value==='object'?Object.fromEntries(Object.entries(value).map(([name,item])=>[name,scrub(item)])):value;
   const log=(message,level='info')=>{const clean=redact(message).trim().slice(0,16000);if(clean)state.logs.push({time:new Date().toISOString(),level,message:clean});if(state.logs.length>400)state.logs.splice(0,state.logs.length-400);};
   const readReport=name=>{if(!REPORTS.has(name))return null;try{return fs.readFileSync(path.join(sessionDir,'out',name),'utf8');}catch{return null;}};
   const jsonReport=name=>{try{return JSON.parse(readReport(name));}catch{return null;}};
   const files=()=>[...REPORTS].flatMap(name=>{try{const stat=fs.statSync(path.join(sessionDir,'out',name));return stat.isFile()?[{name,size:stat.size}]:[];}catch{return [];}});
-  const publicState=()=>scrub({...state,presenceActive:Boolean(presenceWorker||presenceStopping),hasCredentials:Boolean(credentials.token),inventory:state.diagnostics?.inventory??null,guildId:credentials.guildId||state.diagnostics?.guildId||'',
+  const publicState=()=>scrub({...state,credentialsSaved,presenceActive:Boolean(presenceWorker||presenceStopping),hasCredentials:Boolean(credentials.token),inventory:state.diagnostics?.inventory??null,guildId:credentials.guildId||state.diagnostics?.guildId||'',
     reports:{files:files(),preview:state.preview?.summary??null,editPreview:state.editPreview?.summary??null}});
-  const invalidate=()=>{state.preview=null;state.editPreview=null;};
+  const invalidate=()=>{state.preview=null;state.editPreview=null;state.messagePreview=null;};
   function acceptCredentials(config) {
     const token=String(config.token??credentials.token).trim(),guildId=String(config.guildId??credentials.guildId).trim();
     if(!token||token.length>2048||!/^\d{16,22}$/.test(guildId))throw new Error('أدخل توكن البوت ورقم السيرفر الصحيح أولاً.');
@@ -96,16 +102,18 @@ export async function createDesktopServer({root=ROOT,sessionDir,runWorker=spawnD
   const output=(line,mode)=>{
     let event;try{event=JSON.parse(line);}catch{if(mode!=='preview')log(line);return;}
     if(event.event==='diagnostics'){state.diagnostics=event.data;state.connected=true;if(!presenceWorker)state.status='connected';log('تم تحديث قنوات السيرفر والرتب والصلاحيات.');}
-    else if(event.event==='presence'){state.presence=event;state.online=event.status==='online';state.status=state.online?'online':event.status;log(event.message??event.status,event.status==='error'?'error':'info');}
+    else if(event.event==='presence'){state.presence=event;state.online=event.status==='online';if(state.online&&state.presenceStartedAt===null)state.presenceStartedAt=Date.now();state.status=state.online?'online':event.status;log(event.message??event.status,event.status==='error'?'error':'info');}
     else if(event.event==='edit-preview'){state.editPreview=event.data;log('معاينة التعديل جاهزة للمراجعة.');}
+    else if(event.event==='message-preview'){state.messagePreview=event.data;log('معاينة الرسالة جاهزة؛ لم تُرسل إلى Discord.');}
+    else if(event.event==='message-sent'){state.messageResult=event.data;state.messagePreview=null;log('تم إرسال الرسالة باسم البوت.','success');}
     else if(event.event==='edit-applied'){state.result=event.data;invalidate();state.diagnostics=null;state.connected=false;log('اكتمل حفظ التعديل. حدّث السيرفر لرؤية النتيجة.');}
   };
   function launch(mode,config,online=false,connectAfter=false) {
     const epoch=presenceEpoch;
-    const options={cwd:sessionDir,root,onOutput:line=>output(line,mode),onError:line=>{state.error??=redact(line);log(line,'error');}};
+    const options={cwd:sessionDir,root,onOutput:line=>{if(!online||epoch===presenceEpoch)output(line,mode);},onError:line=>{state.error??=redact(line);log(line,'error');}};
     const handle=runWorker(mode,config,options);
-    if(online){presenceWorker=handle;state.presence={status:'connecting'};state.status='connecting';
-      handle.completion.then(result=>{if(presenceWorker===handle){presenceWorker=null;state.online=false;state.presence={status:result.code?'error':'offline'};state.status=state.connected?'connected':'disconnected';} }).catch(error=>log(error.message,'error'));
+    if(online){presenceWorker=handle;state.presenceStartedAt=null;state.presence={status:'connecting'};state.status='connecting';
+      handle.completion.then(result=>{if(presenceWorker===handle){presenceWorker=null;state.online=false;state.presenceStartedAt=null;state.presence={status:result.code?'error':'offline'};state.status=state.connected?'connected':'disconnected';} }).catch(error=>log(error.message,'error'));
       return;
     }
     job=handle;state.busy=true;state.operation=mode;activeOperation=mode;
@@ -116,6 +124,7 @@ export async function createDesktopServer({root=ROOT,sessionDir,runWorker=spawnD
       }
       if(mode==='rebuild'){state.result=jsonReport('result.json');invalidate();state.diagnostics=null;state.connected=false;}
       if(mode==='edit-apply')invalidate();
+      if(mode==='message-send'){state.messagePreview=null;state.messageResult=jsonReport('message-result.json')??state.messageResult;}
       if(result.code!==0){state.error=state.error??'تعذّرت العملية. راجع سجل التشغيل.';log('انتهت العملية دون تطبيق الخطوات المتبقية.','error');}
       else {state.error=null;log(mode==='preview'?'خطة إعادة البناء جاهزة للمراجعة؛ لم يتغير السيرفر.':'اكتملت العملية.','success');
         if(connectAfter&&state.connected&&epoch===presenceEpoch&&!closed&&!presenceWorker&&!presenceStopping)launch('online',config,true);
@@ -127,20 +136,34 @@ export async function createDesktopServer({root=ROOT,sessionDir,runWorker=spawnD
     const {action:name}=body,config=body.config??{};
     if(!config||Array.isArray(config)||typeof config!=='object')throw Object.assign(new Error('إعدادات غير صالحة.'),{status:400});
     if(name==='client-closed'){clearTimeout(clientClosedTimer);clientClosedTimer=setTimeout(()=>{if(!state.busy)close();},8000);clientClosedTimer.unref();return;}
-    if(name==='shutdown'){if(job)throw Object.assign(new Error('انتظر اكتمال العملية قبل إغلاق البرنامج.'),{status:409});setTimeout(()=>close(),25).unref();return;}
+    if(name==='shutdown'){if(state.busy)throw Object.assign(new Error('انتظر اكتمال العملية قبل إغلاق البرنامج.'),{status:409});setTimeout(()=>close(),25).unref();return;}
     if(name==='stop'){
       presenceEpoch++;
+      state.presenceStartedAt=null;
       if(!presenceStopping){const own=presenceWorker;presenceWorker=null;state.presence={status:'disconnecting'};state.status='disconnecting';
         presenceStopping=Promise.resolve().then(()=>own?.stop()).finally(()=>{presenceStopping=null;state.online=false;state.presence={status:'offline'};state.status=state.connected?'connected':'disconnected';});}
       await presenceStopping;return;
     }
-    if(job)throw Object.assign(new Error('انتظر اكتمال العملية الحالية.'),{status:409});
+    if(state.busy)throw Object.assign(new Error('انتظر اكتمال العملية الحالية.'),{status:409});
+    if(['credentials-save','credentials-forget'].includes(name)){
+      if(demo)throw Object.assign(new Error('حفظ البيانات الحقيقية معطّل في العرض التوضيحي.'),{status:403});
+      const value=name==='credentials-save'?acceptCredentials(config):null;
+      state.busy=true;state.operation=name;
+      credentialTask=Promise.resolve().then(async()=>{
+        if(value){await vault.save(value);credentialsSaved=true;log('تم حفظ بيانات الاتصال بتشفير ويندوز.','success');}
+        else {await vault.forget();credentialsSaved=false;log('تم حذف البيانات المحفوظة من الجهاز.','success');}
+        state.error=null;
+      });
+      try{await credentialTask;}finally{credentialTask=null;state.busy=false;state.operation=null;}
+      return;
+    }
     if(demo){
-      if(['connect','rebuild','edit-apply','online'].includes(name))throw Object.assign(new Error('هذه نسخة عرض توضيحي؛ الاتصال والتعديلات الحقيقية معطّلة.'),{status:403});
+      if(['message-send','connect','rebuild','edit-apply','online'].includes(name))throw Object.assign(new Error('هذه نسخة عرض توضيحي؛ الاتصال والتعديلات الحقيقية معطّلة.'),{status:403});
       state.error=null;
       if(['check','inventory'].includes(name)){state.diagnostics=diagnostics(demoSnapshot);log('تم عرض بيانات توضيحية فقط.');return;}
       if(name==='preview'){const p=plan(demoSnapshot);state.preview={summary:renderPreview(demoSnapshot,p),approvalHash:p.approvalHash,plan:p,guildId:demoSnapshot.guild.id,ready:false};log('معاينة توضيحية؛ لا يمكن تنفيذ إعادة بناء في وضع العرض.');return;}
       if(name==='edit-preview'){const p=prepareEdit(demoSnapshot,config.editRequest);state.editPreview={approvalHash:p.approvalHash,summary:editSummary(p),changes:p.changes};return;}
+      if(name==='message-preview'){const p=prepareMessage(demoSnapshot,config.messageRequest,randomBytes(12).toString('hex'));state.messagePreview=messagePreview(p);return;}
     }
     const auth=acceptCredentials(config);
     if(name==='connect'){
@@ -157,11 +180,18 @@ export async function createDesktopServer({root=ROOT,sessionDir,runWorker=spawnD
       const confirmation=config.editConfirmation;
       if(confirmation?.confirmed!==true||confirmation.guildId!==auth.guildId||!state.editPreview||confirmation.approvalHash!==state.editPreview.approvalHash)throw Object.assign(new Error('راجع التعديل أولاً ثم أكّد حفظ الخطة نفسها.'),{status:400});
     }
+    if(name==='message-send'){
+      const c=config.messageConfirmation,p=state.messagePreview;
+      if(c?.confirmed!==true||c.guildId!==auth.guildId||!p||c.approvalHash!==p.approvalHash||c.channelId!==p.channelId)throw Object.assign(new Error('راجع الرسالة والغرفة ثم أكّد إرسال المعاينة نفسها.'),{status:400});
+      state.messagePreview=null;
+    }
+    if(name==='message-preview'){invalidate();state.messageResult=null;}
     if(['check','inventory','preview','edit-preview'].includes(name)){state.editPreview=null;state.preview=null;}
     if(name==='edit-apply'||name==='rebuild')state.preview=null;
     state.error=null;state.result=null;
     launch(name,{...auth,...(name==='rebuild'?{confirmGuildId:config.confirmGuildId,confirmDelete:config.confirmDelete}:{}),
-      ...(name==='edit-preview'?{editRequest:config.editRequest}:{}),...(name==='edit-apply'?{editConfirmation:config.editConfirmation}:{})});
+      ...(name==='edit-preview'?{editRequest:config.editRequest}:{}),...(name==='edit-apply'?{editConfirmation:config.editConfirmation}:{}),
+      ...(name==='message-preview'?{messageRequest:config.messageRequest}:{}),...(name==='message-send'?{messageConfirmation:config.messageConfirmation}:{})});
   }
   const server=http.createServer(async(req,res)=>{
     const headers={'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','Cross-Origin-Resource-Policy':'same-origin',
@@ -175,6 +205,16 @@ export async function createDesktopServer({root=ROOT,sessionDir,runWorker=spawnD
         const supplied=String(req.headers['x-cortex-key']??'');
         if(!/^[a-f0-9]{64}$/.test(supplied)||!timingSafeEqual(Buffer.from(supplied),Buffer.from(key)))return send(401,{error:'جلسة محلية غير صالحة.'});
         lastSeen=Date.now();
+        if(req.method==='GET'&&url.pathname==='/api/preferences')return send(200,{language:uiLanguage});
+        if(req.method==='POST'&&url.pathname==='/api/preferences'){
+          if(!/^application\/json(?:;|$)/i.test(String(req.headers['content-type']??'')))return send(415,{error:'JSON required.'});
+          let size=0;const parts=[];for await(const part of req){size+=part.length;if(size>128){send(413,{error:'Preference too large.'});req.resume();return;}parts.push(part);}
+          let p;try{p=JSON.parse(Buffer.concat(parts).toString('utf8'));}catch{return send(400,{error:'Invalid preference.'});}
+          if(!p||Array.isArray(p)||Object.keys(p).length!==1||!['ar','en'].includes(p.language))return send(400,{error:'Invalid language preference.'});
+          fs.mkdirSync(path.dirname(preferencesFile),{recursive:true});
+          fs.writeFileSync(preferencesFile+'.tmp',JSON.stringify({language:p.language}));fs.renameSync(preferencesFile+'.tmp',preferencesFile);uiLanguage=p.language;
+          return send(200,{language:uiLanguage});
+        }
         if(req.method==='GET'&&url.pathname==='/api/state'){clearTimeout(clientClosedTimer);return send(200,publicState());}
         if(req.method==='GET'&&url.pathname.startsWith('/api/report/')){
           const name=url.pathname.slice('/api/report/'.length);if(!REPORTS.has(name))return send(404,{error:'التقرير غير موجود.'});
@@ -197,7 +237,7 @@ export async function createDesktopServer({root=ROOT,sessionDir,runWorker=spawnD
   const timer=setInterval(()=>{if((!lastSeen&&Date.now()-startedAt>startupTimeoutMs)||(lastSeen&&Date.now()-lastSeen>idleTimeoutMs&&!state.busy))close();},Math.min(5000,Math.max(20,Math.min(idleTimeoutMs,startupTimeoutMs)/2)));timer.unref();
   async function close(){
     if(closed)return done;closed=true;clearInterval(timer);clearTimeout(clientClosedTimer);
-    await Promise.allSettled([job?.stop(),presenceWorker?.stop(),presenceStopping]);job=null;presenceWorker=null;credentials={token:'',guildId:''};secrets.clear();
+    await Promise.allSettled([job?.stop(),presenceWorker?.stop(),presenceStopping,credentialTask]);job=null;presenceWorker=null;credentials={token:'',guildId:''};secrets.clear();
     server.closeAllConnections();await new Promise(resolve=>server.close(resolve));resolveDone();
   }
   await new Promise((resolve,reject)=>{server.once('error',reject);server.listen({host:'127.0.0.1',port},resolve);});

@@ -35,6 +35,47 @@ async function setup(t,options={}) {
 }
 const credentials={token:'desktop-test-token-never-use',guildId:ID};
 
+test('language preference is authenticated, strictly validated, persists across launches and never starts a worker',async t=>{
+  const s=await setup(t),send=value=>s.request('/api/preferences',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(value)});
+  assert.deepEqual(await (await s.request('/api/preferences')).json(),{language:'ar'});
+  assert.equal((await fetch(s.base+'/api/preferences')).status,401);
+  for(const value of [{language:'fr'},{language:'en',token:'secret'},[],null])assert.equal((await send(value)).status,400);
+  assert.equal((await s.request('/api/preferences',{method:'POST',headers:{'Content-Type':'application/json'},body:'x'.repeat(129)})).status,413);
+  assert.equal((await send({language:'en'})).status,200);
+  assert.deepEqual(await (await s.request('/api/preferences')).json(),{language:'en'});assert.equal(s.calls.length,0);
+  const root=path.dirname(s.sessionDir);await s.close();
+  const restored=await createDesktopServer({root,runWorker:()=>{throw new Error('Must not start Discord');}});t.after(()=>restored.close());
+  const response=await fetch(`http://127.0.0.1:${restored.port}/api/preferences`,{headers:{'X-Cortex-Key':restored.key}});assert.deepEqual(await response.json(),{language:'en'});
+  const demo=await createDesktopServer({root,demo:true});t.after(()=>demo.close());
+  const demoResponse=await fetch(`http://127.0.0.1:${demo.port}/api/preferences`,{headers:{'X-Cortex-Key':demo.key}});assert.deepEqual(await demoResponse.json(),{language:'ar'});
+});
+
+test('saved credentials restore privately without starting workers, support explicit save and forget',async t=>{
+  let saved={...credentials};const vault={async load(){return saved;},async save(value){saved={...value};},async forget(){saved=null;}};
+  const s=await setup(t,{credentialStore:vault});let state=await s.state();
+  assert.equal(state.credentialsSaved,true);assert.equal(state.hasCredentials,true);assert.equal(state.guildId,ID);assert.equal(s.calls.length,0);assert.ok(!JSON.stringify(state).includes(credentials.token));
+  assert.equal((await s.action('credentials-save',{...credentials,guildId:'777777777777777777'})).status,202);assert.equal(saved.guildId,'777777777777777777');
+  assert.equal(s.calls.length,0);assert.equal((await s.state()).credentialsSaved,true);
+  assert.equal((await s.action('credentials-forget')).status,202);assert.equal(saved,null);state=await s.state();
+  assert.equal(state.credentialsSaved,false);assert.equal(state.hasCredentials,true);assert.equal(s.calls.length,0);assert.ok(!JSON.stringify(state).includes(credentials.token));
+});
+
+test('demo never reads or writes a credential vault, and unreadable saved data does not block manual entry',async t=>{
+  const vault={async load(){throw new Error('unavailable');},async save(){throw new Error('must not save');},async forget(){}};
+  const demo=await setup(t,{demo:true,credentialStore:vault});assert.equal((await demo.state()).error,null);
+  for(const name of ['credentials-save','credentials-forget'])assert.equal((await demo.action(name,credentials)).status,403);
+  const s=await setup(t,{credentialStore:vault});assert.match((await s.state()).error,/تعذّرت قراءة/);
+  assert.equal((await s.action('check',credentials)).status,202);s.calls[0].output({event:'diagnostics',data:diagnostics(sample())});s.calls[0].finish();assert.equal((await s.settled()).error,null);
+});
+
+test('credential save serializes with forget and shutdown to prevent a late save restoring forgotten data',async t=>{
+  let release,forgot=false;const vault={async load(){return null;},save(){return new Promise(resolve=>{release=resolve;});},async forget(){forgot=true;}};
+  const s=await setup(t,{credentialStore:vault});const saving=s.action('credentials-save',credentials);
+  for(let i=0;i<50&&!release;i++)await new Promise(resolve=>setTimeout(resolve,5));assert.equal(typeof release,'function');
+  assert.equal((await s.state()).busy,true);assert.equal((await s.action('credentials-forget')).status,409);assert.equal((await s.action('shutdown')).status,409);
+  release();assert.equal((await saving).status,202);assert.equal((await s.action('credentials-forget')).status,202);assert.equal(forgot,true);assert.equal((await s.state()).credentialsSaved,false);
+});
+
 test('desktop HTTP bridge authenticates every API, rejects foreign origins/hosts and limits assets',async t=>{
   const s=await setup(t);
   assert.equal((await fetch(s.base+'/api/state')).status,401);
@@ -120,6 +161,22 @@ test('presence worker can be stopped independently and service close stops its o
   await s.close();assert.equal(s.calls[1].stopped,true);
 });
 
+test('bot uptime starts on ready, survives reconnect and inventory reads, resets on stop and rejects stale presence',async t=>{
+  const s=await setup(t);assert.equal((await s.state()).presenceStartedAt,null);
+  await s.action('online',credentials);assert.equal((await s.state()).presenceStartedAt,null);
+  const before=Date.now();s.calls[0].output({event:'presence',status:'online'});
+  const started=(await s.state()).presenceStartedAt;assert.ok(started>=before&&started<=Date.now());
+  s.calls[0].output({event:'presence',status:'reconnecting'});assert.equal((await s.state()).presenceStartedAt,started);
+  s.calls[0].output({event:'presence',status:'online'});assert.equal((await s.state()).presenceStartedAt,started);
+  await s.action('inventory',credentials);s.calls[1].output({event:'diagnostics',data:diagnostics(sample())});s.calls[1].finish();await s.settled();
+  assert.equal((await s.state()).presenceStartedAt,started);
+  await s.action('stop');assert.equal((await s.state()).presenceStartedAt,null);
+  s.calls[0].output({event:'presence',status:'online'});assert.equal((await s.state()).presenceStartedAt,null);
+  await s.action('online',credentials);assert.equal((await s.state()).presenceStartedAt,null);
+  s.calls[2].output({event:'presence',status:'online'});assert.ok((await s.state()).presenceStartedAt>=started);
+  s.calls[2].finish(1);await new Promise(resolve=>setTimeout(resolve,0));assert.equal((await s.state()).presenceStartedAt,null);
+});
+
 test('combined connect loads the server before starting presence and reuses an existing connection',async t=>{
   const s=await setup(t);
   assert.equal((await s.action('connect',credentials)).status,202);
@@ -145,9 +202,20 @@ test('explicit demo has rich Arabic inventory and refuses every real connection 
   const s=await setup(t,{demo:true}),state=await s.state();
   assert.equal(state.demo,true);assert.equal(state.online,false);assert.ok(state.inventory.channels.length>30);assert.ok(state.inventory.roles.some(r=>r.name.includes('🎮')));
   assert.ok(state.inventory.roles.filter(r=>r.name.includes('OWNER')).every(r=>r.readOnlyReason));
-  for(const action of ['online','edit-apply','rebuild'])assert.equal((await s.action(action,credentials)).status,403);
+  for(const action of ['online','edit-apply','rebuild','message-send'])assert.equal((await s.action(action,credentials)).status,403);
   assert.equal((await s.action('inventory')).status,202);assert.equal((await s.action('preview')).status,202);assert.equal((await s.state()).preview.ready,false);
   assert.equal(s.calls.length,0);assert.ok(desktopDemoSnapshot().guild.rules_channel_id);
+});
+
+test('message sending requires an exact reviewed destination and confirmation and consumes approval',async t=>{
+  const s=await setup(t);
+  assert.equal((await s.action('message-send',{...credentials,messageConfirmation:{confirmed:true,guildId:ID,channelId:'777777777777777777',approvalHash:'hash'}})).status,400);
+  await s.action('message-preview',{...credentials,messageRequest:{channelId:'777777777777777777',content:'Hello'}});
+  s.calls[0].output({event:'message-preview',data:{approvalHash:'hash',channelId:'777777777777777777',content:'Hello'}});s.calls[0].finish();await s.settled();
+  assert.equal((await s.action('message-send',{messageConfirmation:{confirmed:true,guildId:ID,channelId:'666666666666666666',approvalHash:'hash'}})).status,400);
+  assert.equal((await s.action('message-send',{messageConfirmation:{confirmed:true,guildId:ID,channelId:'777777777777777777',approvalHash:'hash'}})).status,202);
+  assert.equal(s.calls[1].mode,'message-send');s.calls[1].output({event:'message-sent',data:{success:true,channelId:'777777777777777777',messageId:'999999999999999999'}});s.calls[1].finish();await s.settled();
+  assert.equal((await s.action('message-send',{messageConfirmation:{confirmed:true,guildId:ID,channelId:'777777777777777777',approvalHash:'hash'}})).status,400);
 });
 
 test('HTTP bridge drives the real worker over stdin with mocked GET-only Discord for inventory and full preview',async t=>{
@@ -205,6 +273,15 @@ test('real worker can review, confirm and save role and voice edits, then create
   inv=await load();assert.ok(inv.channels.some(c=>c.name==='💬・دردشة جديدة'));
   const writes=fs.readFileSync(requests,'utf8').trim().split('\n').map(JSON.parse).filter(r=>r.method!=='GET');
   assert.deepEqual(writes.map(r=>r.method),['PATCH','PATCH','POST']);
+  const destination=inv.channels.find(c=>c.type===0);
+  const embeds=[{title:'📜 قوانين المجتمع',description:'احترم الجميع',color:9274367},{title:'📜 Community Rules',description:'Respect everyone',color:5025616}];
+  assert.equal((await s.action('message-preview',{messageRequest:{channelId:destination.id,content:'🎮 أهلًا بأعضاء المجتمع',embeds}})).status,202);
+  const message=await s.settled();assert.equal(message.error,null);assert.equal(message.messagePreview.content,'🎮 أهلًا بأعضاء المجتمع');
+  assert.deepEqual(message.messagePreview.embeds,embeds);
+  assert.equal((await s.action('message-send',{messageConfirmation:{confirmed:true,guildId:ID,channelId:destination.id,approvalHash:message.messagePreview.approvalHash}})).status,202);
+  const sent=await s.settled();assert.equal(sent.error,null);assert.equal(sent.messageResult.success,true);
+  const allWrites=fs.readFileSync(requests,'utf8').trim().split('\n').map(JSON.parse).filter(r=>r.method!=='GET');
+  assert.deepEqual(allWrites.at(-1),{method:'POST',route:`/channels/${destination.id}/messages`});assert.equal(allWrites.length,4);
 });
 
 test('server without a loaded client exits after its startup grace period',async t=>{

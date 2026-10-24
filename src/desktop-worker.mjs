@@ -7,6 +7,7 @@ import {roleProtection} from './safety.mjs';
 import {GatewaySession} from './gateway.mjs';
 import path from 'node:path';
 import {serverInventory,previewEdit,applyEdit,editSummary} from './editor.mjs';
+import {previewMessage,sendMessage,messagePreview} from './messages.mjs';
 
 export function diagnostics(s) {
   const permissionBits=botPermissions(s);
@@ -39,6 +40,8 @@ export async function runDesktopWorker(mode,{input=process.stdin,output=process.
   if(['check','inventory'].includes(mode)) {emit({event:'diagnostics',data:diagnostics(await snapshot(new DiscordAPI(token),guildId,{includeMembers:false}))});return;}
   if(mode==='edit-preview') {const p=await previewEdit(new DiscordAPI(token),guildId,config.editRequest,path.join(process.cwd(),'out'));emit({event:'edit-preview',data:{approvalHash:p.approvalHash,summary:editSummary(p),changes:p.changes}});return;}
   if(mode==='edit-apply') {const result=await applyEdit(new DiscordAPI(token),guildId,config.editConfirmation,path.join(process.cwd(),'out'));emit({event:'edit-applied',data:result});return;}
+  if(mode==='message-preview'){const p=await previewMessage(new DiscordAPI(token),guildId,config.messageRequest,path.join(process.cwd(),'out'));emit({event:'message-preview',data:messagePreview(p)});return;}
+  if(mode==='message-send'){const result=await sendMessage(new DiscordAPI(token),guildId,config.messageConfirmation,path.join(process.cwd(),'out'));emit({event:'message-sent',data:result});return;}
   if(!['preview','rebuild'].includes(mode))throw new Error('Unknown desktop operation');
   process.env.DISCORD_BOT_TOKEN=token;process.env.DISCORD_GUILD_ID=guildId;
   process.env.CONFIRM_GUILD_ID=String(config.confirmGuildId??'');process.env.CONFIRM_DELETE=String(config.confirmDelete??'');

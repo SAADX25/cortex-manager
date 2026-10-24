@@ -24,9 +24,9 @@ export function botTopPosition(snapshot){
   const ids = new Set(snapshot.botMember.roles);
   return Math.max(0,...snapshot.roles.filter(r=>ids.has(r.id)).map(r=>r.position));
 }
-export function canManageChannel(snapshot, channel){
+export function effectiveChannelPermissions(snapshot, channel){
   let b = botPermissions(snapshot);
-  if (has(b,P.Administrator)) return true;
+  if (has(b,P.Administrator)) return b;
   const ws = channel.permission_overwrites ?? [];
   const everyone = ws.find(w=>w.id === snapshot.guild.id && w.type === 0);
   if (everyone) b = (b & ~BigInt(everyone.deny)) | BigInt(everyone.allow);
@@ -37,6 +37,10 @@ export function canManageChannel(snapshot, channel){
   b=(b & ~deny)|allow;
   const self=ws.find(w=>w.type===1 && w.id===snapshot.bot.id);
   if(self) b=(b & ~BigInt(self.deny))|BigInt(self.allow);
+  return b;
+}
+export function canManageChannel(snapshot, channel){
+  const b=effectiveChannelPermissions(snapshot,channel);
   return has(b,P.ViewChannel)&&has(b,P.ManageChannels)&&(![2,13].includes(channel.type)||has(b,P.Connect));
 }
 const bitstr = v=>String(v);
