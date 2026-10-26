@@ -52,18 +52,20 @@ export function createOverwrites(category, roleIds, guildId, botId, channel={}, 
   const rw=bits(['ViewChannel','SendMessages','ReadMessageHistory','Connect','Speak']);
   const list=[];
   let everyoneDeny=0n;
-  if(category.access==='staff') everyoneDeny |= P.ViewChannel;
+  const privateChannel=channel.private||channel.accessKeys?.length>0||channel.vipOnly;
+  if(category.access==='staff'||privateChannel) everyoneDeny |= P.ViewChannel;
   if(channel.readonly) everyoneDeny |= bits(['SendMessages','AddReactions','CreatePublicThreads','CreatePrivateThreads','SendMessagesInThreads']);
   if(channel.vipOnly) everyoneDeny |= bits(['ViewChannel','Connect']);
-  const publicAllow=category.access==='public'&&!channel.vipOnly ? rw & ~everyoneDeny : 0n;
+  const publicAllow=category.access==='public'&&!privateChannel ? rw & ~everyoneDeny : 0n;
   list.push(overwrite(everyoneId,0,publicAllow,everyoneDeny));
   if(mute) list.push(overwrite(mute,0,0n,muteDeny));
-  const accessKeys=category.access==='staff' ? category.staffKeys : (channel.vipOnly?['admin','headmod','mod','vip']:[]);
-  for(const key of accessKeys ?? []) if(roleIds[key])list.push(overwrite(roleIds[key],0,rw,0n));
-  if(category.access==='staff'||channel.vipOnly||channel.readonly) {
+  const accessKeys=channel.accessKeys?.length?channel.accessKeys:category.access==='staff'?category.staffKeys:(channel.vipOnly?['admin','headmod','mod','vip']:[]);
+  const accessAllow=channel.readonly?rw&~P.SendMessages:rw;
+  for(const key of accessKeys ?? []) if(roleIds[key])list.push(overwrite(roleIds[key],0,accessAllow,0n));
+  if(category.access==='staff'||privateChannel||channel.readonly) {
     for(const id of roleIds.leadership??[])list.push(overwrite(id,0,rw,0n));
   }
-  if(channel.readonly) for(const key of ['admin','headmod','mod']){
+  if(channel.readonly) for(const key of channel.readonlyWriters??['admin','headmod','mod']){
     const id=roleIds[key];
     if(id){
       const item=list.find(w=>w.id===id&&w.type===0);

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import {prepareEdit,serverInventory,revision,previewEdit,applyEdit} from '../src/editor.mjs';
+import {prepareEdit,serverInventory,revision,previewEdit,applyEdit,guildIconURL} from '../src/editor.mjs';
 import {P} from '../src/permissions.mjs';
 import {ID,LEGACY,BOT_ROLE,sample,fakeServer} from './helpers/fake.mjs';
 const roleRequest=(s,values={name:'updated role'})=>({kind:'role',action:'update',id:LEGACY,revision:revision('role',s.roles.find(r=>r.id===LEGACY)),values});
@@ -17,6 +17,32 @@ test('inventory exposes current categories, channels, role colors, permission fl
   assert.equal(inventory.channels.length,2);assert.equal(inventory.roles.length,5);
   assert.ok(inventory.roles.every(r=>r.revision&&Array.isArray(r.flags)));
   assert.ok(inventory.roles.find(r=>r.name==='★ OWNER ★').readOnlyReason);
+});
+
+test('guild profile derives only validated Discord icon URLs and respects Manage Guild',()=>{
+  const s=sample();s.guild.icon='a_'+'a'.repeat(32);
+  assert.equal(guildIconURL(s.guild),`https://cdn.discordapp.com/icons/${ID}/${s.guild.icon}.png?size=128`);
+  for(const icon of [null,'../../secret','https://example.com/a','abc" onerror="x'])assert.equal(guildIconURL({...s.guild,icon}),null);
+  const profile=serverInventory(s).guildProfile;assert.equal(profile.name,s.guild.name);assert.equal(profile.readOnlyReason,null);
+  s.roles[0].permissions='0';s.roles.find(r=>r.id===BOT_ROLE).permissions=String(P.ViewChannel);assert.match(serverInventory(s).guildProfile.readOnlyReason,/Manage Server/);
+});
+
+test('guild rename previews only reads, requires exact confirmation and patches only the name',async t=>{
+  const s=sample(),server=fakeServer(s),directory=temp(t),request={kind:'guild',action:'update',id:ID,revision:revision('guild',s.guild),values:{name:'New Gaming Community'}};
+  const p=await previewEdit(server.api,ID,request,directory);assert.equal(server.calls.length,0);
+  await assert.rejects(applyEdit(server.api,ID,{confirmed:false,guildId:ID,approvalHash:p.approvalHash},directory));
+  await assert.rejects(applyEdit(server.api,ID,{confirmed:true,guildId:ID,approvalHash:'other'},directory));
+  const result=await applyEdit(server.api,ID,{confirmed:true,guildId:ID,approvalHash:p.approvalHash},directory);assert.equal(result.success,true);
+  assert.deepEqual(server.calls,[{method:'PATCH',path:`/guilds/${ID}`,body:{name:'New Gaming Community'}}]);
+  assert.deepEqual(server.state.roles,s.roles);assert.deepEqual(server.state.channels,s.channels);assert.deepEqual(server.state.members,s.members);
+});
+
+test('guild rename rejects unrelated settings, wrong server, missing permissions and drift',async t=>{
+  const s=sample(),request={kind:'guild',action:'update',id:ID,revision:revision('guild',s.guild),values:{name:'New name'}};
+  for(const invalid of [{...request,action:'create'},{...request,id:'999999999999999999'},{...request,values:{name:'A'}},{...request,values:{name:'a'.repeat(101)}},{...request,values:{name:'New name',owner_id:ID}},{...request,values:{name:'New name',rules_channel_id:null}},{...request,permissionChanges:{Administrator:true}}])assert.throws(()=>prepareEdit(s,invalid));
+  const server=fakeServer(s),directory=temp(t),p=await previewEdit(server.api,ID,request,directory);
+  server.state.guild.name='Changed elsewhere';await assert.rejects(applyEdit(server.api,ID,{confirmed:true,guildId:ID,approvalHash:p.approvalHash},directory),/تغيّرت بيانات/);assert.equal(server.calls.length,0);
+  s.roles[0].permissions='0';s.roles.find(r=>r.id===BOT_ROLE).permissions='0';assert.throws(()=>prepareEdit(s,request),/Manage Server/);
 });
 test('manual editor rejects leadership aliases, everyone, managed and high roles',()=>{
   for(const name of ['★ OWNER ★','★OWNER★','★ CO_OWNER ★','★ CO OWNER ★','★ CO_OWNER\u200b ★']) {

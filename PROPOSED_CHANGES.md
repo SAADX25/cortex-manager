@@ -10,6 +10,10 @@ These are local proposed changes to the existing cortex-manager project. No live
 
 ## Safety changes
 
+The live channel/role browser now supports handle dragging and a keyboard-accessible move button. A move is a separate reviewed editor operation with exact confirmation, a fresh configuration check and backup, then one positions-only PATCH. Channel moves omit overwrite/sync fields. Protected roles cannot be crossed or included in role position payloads; Community channels, their categories and category children stay locked for movement. The rebuild mutation allowlist remains unchanged. UI drop markers, auto-scroll, category hover opening and reduced-motion-aware row transitions only preview movement until confirmation.
+
+The Server redesign page now has a bilingual blueprint editor: Arabic/English presets, categories and text/voice channels, role names/colors/permissions, private access, read-only writers, optional opening messages and explicit legacy-role migration mappings. Drafts save locally per guild and import/export validated JSON. Preview records the exact reviewed blueprint in `design.json`; rebuilding verifies it against the approval and source fingerprint. Any draft change invalidates the displayed approval. Up/down controls change creation sequence while existing role positions stay unchanged. GitHub Actions includes the reviewed blueprint in the pre-execution backup artifact.
+
 - Permanently protect ★ OWNER ★ and ★ CO_OWNER ★ by role name and the IDs captured in the reviewed snapshot. Never send edit/delete/reorder/member-removal requests for either role. Preserve permissions, membership and relative hierarchy.
 - Preserve @everyone, managed/integration/bot roles, bot-assigned roles and roles outside the bot hierarchy; report these without stopping normal cleanup.
 - Leave Community rules/moderator-only channels, guild-linked channels and parent categories unchanged. Reuse Community functions for corresponding design slots.

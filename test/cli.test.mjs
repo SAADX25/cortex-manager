@@ -53,7 +53,11 @@ test('CLI preview is GET-only and rebuild rejects missing confirmation, tampered
   fs.writeFileSync(approvalPath,JSON.stringify({...approval,sourceDigest:'tampered'}));
   const confirmed={CONFIRM_DELETE:CONFIRMATION,CONFIRM_GUILD_ID:ID};
   const tampered=run('rebuild',confirmed);assert.equal(tampered.status,1);assert.match(tampered.stderr,/does not match/);assert.equal(requests().length,before);
-  fs.writeFileSync(approvalPath,JSON.stringify(approval));writeMock(true);
+  fs.writeFileSync(approvalPath,JSON.stringify(approval));
+  const designPath=path.join(output,'design.json'),design=JSON.parse(fs.readFileSync(designPath,'utf8'));
+  fs.writeFileSync(designPath,JSON.stringify({...design,roles:design.roles.map((r,i)=>i===0?{...r,color:r.color+1}:r)}));
+  const changedDesign=run('rebuild',confirmed);assert.equal(changedDesign.status,1);assert.match(changedDesign.stderr,/does not match/);assert.equal(requests().length,before);
+  fs.writeFileSync(designPath,JSON.stringify(design));writeMock(true);
   const drift=run('rebuild',confirmed);assert.equal(drift.status,1);assert.match(drift.stderr,/changed since preview/);
   assert.ok(requests().every(r=>r.method==='GET'));
   const result=JSON.parse(fs.readFileSync(path.join(output,'result.json'),'utf8'));

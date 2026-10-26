@@ -1,3 +1,6 @@
+import fs from 'node:fs';
+import {validateCustomDesign} from './custom-design.mjs';
+import {previewRoleGrant,applyRoleGrant,roleGrantPublic} from './role-grants.mjs';
 import readline from 'node:readline';
 import {pathToFileURL} from 'node:url';
 import {DiscordAPI,snapshot} from './api.mjs';
@@ -8,6 +11,7 @@ import {GatewaySession} from './gateway.mjs';
 import path from 'node:path';
 import {serverInventory,previewEdit,applyEdit,editSummary} from './editor.mjs';
 import {previewMessage,sendMessage,messagePreview} from './messages.mjs';
+import {readMemberCounts} from './member-counts.mjs';
 
 export function diagnostics(s) {
   const permissionBits=botPermissions(s);
@@ -37,12 +41,15 @@ export async function runDesktopWorker(mode,{input=process.stdin,output=process.
     session.start();return;
   }
   lines.close();
-  if(['check','inventory'].includes(mode)) {emit({event:'diagnostics',data:diagnostics(await snapshot(new DiscordAPI(token),guildId,{includeMembers:false}))});return;}
-  if(mode==='edit-preview') {const p=await previewEdit(new DiscordAPI(token),guildId,config.editRequest,path.join(process.cwd(),'out'));emit({event:'edit-preview',data:{approvalHash:p.approvalHash,summary:editSummary(p),changes:p.changes}});return;}
+  if(['check','inventory'].includes(mode)) {const api=new DiscordAPI(token),s=await snapshot(api,guildId,{includeMembers:false});s.memberStatistics=await readMemberCounts(api,guildId);emit({event:'diagnostics',data:diagnostics(s)});return;}
+  if(mode==='role-grant-preview'){const p=await previewRoleGrant(new DiscordAPI(token),guildId,config.roleGrantRequest,path.join(process.cwd(),'out'));emit({event:'role-grant-preview',data:roleGrantPublic(p)});return;}
+  if(mode==='role-grant-apply'){const result=await applyRoleGrant(new DiscordAPI(token),guildId,config.roleGrantConfirmation,path.join(process.cwd(),'out'));emit({event:'role-granted',data:result});return;}
+  if(mode==='edit-preview') {const p=await previewEdit(new DiscordAPI(token),guildId,config.editRequest,path.join(process.cwd(),'out'));emit({event:'edit-preview',data:{approvalHash:p.approvalHash,summary:editSummary(p),changes:p.changes,...(p.move?{move:p.move}:{})}});return;}
   if(mode==='edit-apply') {const result=await applyEdit(new DiscordAPI(token),guildId,config.editConfirmation,path.join(process.cwd(),'out'));emit({event:'edit-applied',data:result});return;}
   if(mode==='message-preview'){const p=await previewMessage(new DiscordAPI(token),guildId,config.messageRequest,path.join(process.cwd(),'out'));emit({event:'message-preview',data:messagePreview(p)});return;}
   if(mode==='message-send'){const result=await sendMessage(new DiscordAPI(token),guildId,config.messageConfirmation,path.join(process.cwd(),'out'));emit({event:'message-sent',data:result});return;}
   if(!['preview','rebuild'].includes(mode))throw new Error('Unknown desktop operation');
+  if(mode==='preview'){const file=path.join(process.cwd(),'out','design-input.json');fs.mkdirSync(path.dirname(file),{recursive:true});if(config.design)fs.writeFileSync(file,JSON.stringify(validateCustomDesign(config.design)));else fs.rmSync(file,{force:true});}
   process.env.DISCORD_BOT_TOKEN=token;process.env.DISCORD_GUILD_ID=guildId;
   process.env.CONFIRM_GUILD_ID=String(config.confirmGuildId??'');process.env.CONFIRM_DELETE=String(config.confirmDelete??'');
   // Local desktop approval uses the existing independently generated plan,

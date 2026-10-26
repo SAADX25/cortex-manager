@@ -28,6 +28,8 @@ export function fakeServer(initial,{beforeCall=()=>{},onCapture=()=>{}}={}) {
     async get(path) {
       if(path==='/users/@me')return structuredClone(state.bot);
       if(path===`/guilds/${ID}`)return structuredClone(state.guild);
+      if(path===`/guilds/${ID}?with_counts=true`)return {...structuredClone(state.guild),approximate_member_count:state.members.length};
+      if(path===`/guilds/${ID}/roles/member-counts`)return Object.fromEntries(state.roles.filter(r=>r.id!==ID).map(r=>[r.id,state.members.filter(m=>m.roles.includes(r.id)).length]));
       if(path===`/guilds/${ID}/roles`)return structuredClone(state.roles);
       if(path===`/guilds/${ID}/channels`)return structuredClone(state.channels);
       if(path.startsWith(`/guilds/${ID}/members?`))return state.members.map(m=>({user:{id:m.id,bot:m.id===BOT},roles:[...m.roles]}));
@@ -53,6 +55,8 @@ export function fakeServer(initial,{beforeCall=()=>{},onCapture=()=>{}}={}) {
       const role=path.match(/\/roles\/(\d+)$/)?.[1];
       const channel=path.match(/^\/channels\/(\d+)$/)?.[1];
       if(method==='PATCH') {
+        if(path===`/guilds/${ID}/roles`||path===`/guilds/${ID}/channels`){const list=path.endsWith('/roles')?state.roles:state.channels;for(const entry of body)Object.assign(list.find(item=>item.id===entry.id),entry);return path.endsWith('/roles')?structuredClone(state.roles):null;}
+        if(path===`/guilds/${ID}`){Object.assign(state.guild,body);return structuredClone(state.guild);}
         const entity=role?state.roles.find(r=>r.id===role):state.channels.find(c=>c.id===channel);
         Object.assign(entity,body);return structuredClone(entity);
       }

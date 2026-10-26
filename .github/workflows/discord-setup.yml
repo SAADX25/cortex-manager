@@ -109,6 +109,7 @@ jobs:
             out/snapshot.json
             out/approval.json
             out/plan.json
+            out/design.json
             out/preview.md
           retention-days: 7
           if-no-files-found: error

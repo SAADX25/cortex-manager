@@ -1,3 +1,6 @@
+import {defaultDesign,designTemplate,validateCustomDesign} from './custom-design.mjs';
+import {digest} from './safety.mjs';
+import {prepareRoleGrant,roleGrantPublic} from './role-grants.mjs';
 // Private, per-launch desktop bridge. Discord credentials stay in memory and
 // worker stdin; this service has no arbitrary command, URL or filesystem API.
 import http from 'node:http';
@@ -17,9 +20,9 @@ import {createCredentialStore} from './credentials.mjs';
 import {prepareMessage,messagePreview} from './messages.mjs';
 
 const ROOT=fileURLToPath(new URL('../',import.meta.url));
-const ACTIONS=new Set(['message-preview','message-send','credentials-save','credentials-forget','connect','check','inventory','online','stop','preview','rebuild','edit-preview','edit-apply','shutdown','client-closed']);
-const REPORTS=new Set(['preview.md','plan.json','approval.json','snapshot.json','result.json','execution-log.txt','failure.json','edit-preview.txt','edit-plan.json','edit-snapshot.json','edit-result.json','edit-conflict.json','message-plan.json','message-preview.txt','message-result.json']);
-const STATIC=new Map([['/','index.html'],['/index.html','index.html'],['/app.js','app.js'],['/i18n.js','i18n.js'],['/styles.css','styles.css'],['/favicon.svg','favicon.svg']]);
+const ACTIONS=new Set(['role-grant-preview','role-grant-apply','message-preview','message-send','credentials-save','credentials-forget','connect','check','inventory','online','stop','preview','rebuild','edit-preview','edit-apply','shutdown','client-closed']);
+const REPORTS=new Set(['design.json','role-grant-plan.json','role-grant-preview.txt','role-grant-result.json','preview.md','plan.json','approval.json','snapshot.json','result.json','execution-log.txt','failure.json','edit-preview.txt','edit-plan.json','edit-snapshot.json','edit-result.json','edit-conflict.json','message-plan.json','message-preview.txt','message-result.json']);
+const STATIC=new Map([['/','index.html'],['/index.html','index.html'],['/app.js','app.js'],['/i18n.js','i18n.js'],['/designer.js','designer.js'],['/arrange.js','arrange.js'],['/styles.css','styles.css'],['/favicon.svg','favicon.svg']]);
 const TYPES={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml; charset=utf-8','.json':'application/json; charset=utf-8','.md':'text/plain; charset=utf-8','.txt':'text/plain; charset=utf-8'};
 const MAX_BODY=256*1024;
 
@@ -43,6 +46,8 @@ export function desktopDemoSnapshot() {
       if(channel.key==='audit')s.guild.public_updates_channel_id=id;
     }
   }
+  const roleId=name=>s.roles.find(r=>r.name.endsWith('・'+name))?.id;
+  s.members=[{id:botId,bot:true,roles:[botRole]},...Array.from({length:12},(_,i)=>({id:String(900000000000001000n+BigInt(i)),bot:false,roles:[roleId('Member'),...(i%2===0?[roleId('Gamer')]:[]),...(i<3?[roleId('VIP')]:[]),...(i===0?['999999999999999991']:i===1?['999999999999999992']:[])].filter(Boolean)}))];
   return s;
 }
 
@@ -81,7 +86,7 @@ export async function createDesktopServer({root=ROOT,sessionDir,runWorker=spawnD
   let resolveDone;const done=new Promise(resolve=>{resolveDone=resolve;});
   const demoSnapshot=demo?desktopDemoSnapshot():null;
   const state={version:'6.0',demo:!!demo,busy:false,status:demo?'demo':'disconnected',online:false,connected:false,presenceStartedAt:null,presence:{status:demo?'demo':'offline'},diagnostics:demo?diagnostics(demoSnapshot):null,
-    preview:null,editPreview:null,messagePreview:null,messageResult:null,logs:[],operation:null,result:null,error:credentialLoadError};
+    roleGrantPreview:null,preview:null,editPreview:null,messagePreview:null,messageResult:null,logs:[],operation:null,result:null,error:credentialLoadError};
   const redact=value=>{let result=String(value??'');for(const secret of secrets)if(secret)result=result.split(secret).join('[محجوب]');return result;};
   const scrub=value=>typeof value==='string'?redact(value):Array.isArray(value)?value.map(scrub):value&&typeof value==='object'?Object.fromEntries(Object.entries(value).map(([name,item])=>[name,scrub(item)])):value;
   const log=(message,level='info')=>{const clean=redact(message).trim().slice(0,16000);if(clean)state.logs.push({time:new Date().toISOString(),level,message:clean});if(state.logs.length>400)state.logs.splice(0,state.logs.length-400);};
@@ -90,7 +95,7 @@ export async function createDesktopServer({root=ROOT,sessionDir,runWorker=spawnD
   const files=()=>[...REPORTS].flatMap(name=>{try{const stat=fs.statSync(path.join(sessionDir,'out',name));return stat.isFile()?[{name,size:stat.size}]:[];}catch{return [];}});
   const publicState=()=>scrub({...state,credentialsSaved,presenceActive:Boolean(presenceWorker||presenceStopping),hasCredentials:Boolean(credentials.token),inventory:state.diagnostics?.inventory??null,guildId:credentials.guildId||state.diagnostics?.guildId||'',
     reports:{files:files(),preview:state.preview?.summary??null,editPreview:state.editPreview?.summary??null}});
-  const invalidate=()=>{state.preview=null;state.editPreview=null;state.messagePreview=null;};
+  const invalidate=()=>{state.roleGrantPreview=null;state.preview=null;state.editPreview=null;state.messagePreview=null;};
   function acceptCredentials(config) {
     const token=String(config.token??credentials.token).trim(),guildId=String(config.guildId??credentials.guildId).trim();
     if(!token||token.length>2048||!/^\d{16,22}$/.test(guildId))throw new Error('أدخل توكن البوت ورقم السيرفر الصحيح أولاً.');
@@ -103,6 +108,8 @@ export async function createDesktopServer({root=ROOT,sessionDir,runWorker=spawnD
     let event;try{event=JSON.parse(line);}catch{if(mode!=='preview')log(line);return;}
     if(event.event==='diagnostics'){state.diagnostics=event.data;state.connected=true;if(!presenceWorker)state.status='connected';log('تم تحديث قنوات السيرفر والرتب والصلاحيات.');}
     else if(event.event==='presence'){state.presence=event;state.online=event.status==='online';if(state.online&&state.presenceStartedAt===null)state.presenceStartedAt=Date.now();state.status=state.online?'online':event.status;log(event.message??event.status,event.status==='error'?'error':'info');}
+    else if(event.event==='role-grant-preview'){state.roleGrantPreview=event.data;log('معاينة منح الرتبة جاهزة؛ لم تتغير رتب العضو.');}
+    else if(event.event==='role-granted'){state.roleGrantPreview=null;state.result=event.data;log('تم منح الرتبة للعضو المحدد.','success');}
     else if(event.event==='edit-preview'){state.editPreview=event.data;log('معاينة التعديل جاهزة للمراجعة.');}
     else if(event.event==='message-preview'){state.messagePreview=event.data;log('معاينة الرسالة جاهزة؛ لم تُرسل إلى Discord.');}
     else if(event.event==='message-sent'){state.messageResult=event.data;state.messagePreview=null;log('تم إرسال الرسالة باسم البوت.','success');}
@@ -158,11 +165,12 @@ export async function createDesktopServer({root=ROOT,sessionDir,runWorker=spawnD
       return;
     }
     if(demo){
-      if(['message-send','connect','rebuild','edit-apply','online'].includes(name))throw Object.assign(new Error('هذه نسخة عرض توضيحي؛ الاتصال والتعديلات الحقيقية معطّلة.'),{status:403});
+      if(['role-grant-apply','message-send','connect','rebuild','edit-apply','online'].includes(name))throw Object.assign(new Error('هذه نسخة عرض توضيحي؛ الاتصال والتعديلات الحقيقية معطّلة.'),{status:403});
       state.error=null;
       if(['check','inventory'].includes(name)){state.diagnostics=diagnostics(demoSnapshot);log('تم عرض بيانات توضيحية فقط.');return;}
-      if(name==='preview'){const p=plan(demoSnapshot);state.preview={summary:renderPreview(demoSnapshot,p),approvalHash:p.approvalHash,plan:p,guildId:demoSnapshot.guild.id,ready:false};log('معاينة توضيحية؛ لا يمكن تنفيذ إعادة بناء في وضع العرض.');return;}
-      if(name==='edit-preview'){const p=prepareEdit(demoSnapshot,config.editRequest);state.editPreview={approvalHash:p.approvalHash,summary:editSummary(p),changes:p.changes};return;}
+      if(name==='preview'){const p=plan(demoSnapshot,undefined,config.design??null);state.preview={summary:renderPreview(demoSnapshot,p),approvalHash:p.approvalHash,plan:p,guildId:demoSnapshot.guild.id,ready:false};log('معاينة توضيحية؛ لا يمكن تنفيذ إعادة بناء في وضع العرض.');return;}
+      if(name==='role-grant-preview'){invalidate();const member=demoSnapshot.members.find(m=>m.id===config.roleGrantRequest?.memberId);state.roleGrantPreview=roleGrantPublic(prepareRoleGrant(demoSnapshot,config.roleGrantRequest,member?{...member,nick:'عضو تجريبي'}:null,randomBytes(12).toString('hex')));return;}
+      if(name==='edit-preview'){const p=prepareEdit(demoSnapshot,config.editRequest);state.editPreview={approvalHash:p.approvalHash,summary:editSummary(p),changes:p.changes,...(p.move?{move:p.move}:{})};return;}
       if(name==='message-preview'){const p=prepareMessage(demoSnapshot,config.messageRequest,randomBytes(12).toString('hex'));state.messagePreview=messagePreview(p);return;}
     }
     const auth=acceptCredentials(config);
@@ -173,9 +181,12 @@ export async function createDesktopServer({root=ROOT,sessionDir,runWorker=spawnD
     }
     if(name==='online'){if(presenceWorker||presenceStopping)throw Object.assign(new Error('البوت متصل أو يجري تغيير الاتصال؛ انتظر اكتمال العملية.'),{status:409});state.error=null;launch(name,auth,true);return;}
     if(name==='rebuild'){
+      if(state.preview?.plan?.design&&digest(validateCustomDesign(config.design))!==digest(state.preview.plan.design))throw new Error('تغيّر القالب منذ المعاينة؛ أنشئ معاينة جديدة.');
       if(config.confirmGuildId!==auth.guildId||config.confirmDelete!==CONFIRMATION)throw Object.assign(new Error('يتطلب التنفيذ كتابة رقم السيرفر وعبارة الحذف المطابقة.'),{status:400});
       if(!state.preview?.ready||state.preview.guildId!==auth.guildId)throw Object.assign(new Error('أنشئ معاينة ناجحة لهذا السيرفر وراجعها أولاً.'),{status:409});
     }
+    if(name==='role-grant-apply'){const c=config.roleGrantConfirmation,p=state.roleGrantPreview;if(c?.confirmed!==true||c.guildId!==auth.guildId||!p||c.approvalHash!==p.approvalHash||c.memberId!==p.memberId||c.roleId!==p.roleId||p.administrator&&c.acknowledgeAdmin!==true)throw new Error('راجع العضو والرتبة وأكّد المعاينة نفسها.');state.roleGrantPreview=null;}
+    if(name==='role-grant-preview'){invalidate();}
     if(name==='edit-apply') {
       const confirmation=config.editConfirmation;
       if(confirmation?.confirmed!==true||confirmation.guildId!==auth.guildId||!state.editPreview||confirmation.approvalHash!==state.editPreview.approvalHash)throw Object.assign(new Error('راجع التعديل أولاً ثم أكّد حفظ الخطة نفسها.'),{status:400});
@@ -186,16 +197,17 @@ export async function createDesktopServer({root=ROOT,sessionDir,runWorker=spawnD
       state.messagePreview=null;
     }
     if(name==='message-preview'){invalidate();state.messageResult=null;}
-    if(['check','inventory','preview','edit-preview'].includes(name)){state.editPreview=null;state.preview=null;}
+    if(['check','inventory','preview','edit-preview'].includes(name)){state.roleGrantPreview=null;state.editPreview=null;state.preview=null;}
     if(name==='edit-apply'||name==='rebuild')state.preview=null;
     state.error=null;state.result=null;
-    launch(name,{...auth,...(name==='rebuild'?{confirmGuildId:config.confirmGuildId,confirmDelete:config.confirmDelete}:{}),
+    launch(name,{...auth,...(name==='preview'?{design:config.design?validateCustomDesign(config.design):null}:{}),...(name==='rebuild'?{confirmGuildId:config.confirmGuildId,confirmDelete:config.confirmDelete}:{}),
+      ...(name==='role-grant-preview'?{roleGrantRequest:config.roleGrantRequest}:{}),...(name==='role-grant-apply'?{roleGrantConfirmation:config.roleGrantConfirmation}:{}),
       ...(name==='edit-preview'?{editRequest:config.editRequest}:{}),...(name==='edit-apply'?{editConfirmation:config.editConfirmation}:{}),
       ...(name==='message-preview'?{messageRequest:config.messageRequest}:{}),...(name==='message-send'?{messageConfirmation:config.messageConfirmation}:{})});
   }
   const server=http.createServer(async(req,res)=>{
     const headers={'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','Cross-Origin-Resource-Policy':'same-origin',
-      'Content-Security-Policy':"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"};
+      'Content-Security-Policy':"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://cdn.discordapp.com; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"};
     const send=(status,data,type='application/json; charset=utf-8')=>{res.writeHead(status,{...headers,'Content-Type':type});res.end(type.startsWith('application/json')&&typeof data==='object'&&!Buffer.isBuffer(data)?JSON.stringify(data):data);};
     try {
       const host=`127.0.0.1:${server.address().port}`,origin=`http://${host}`;
@@ -205,6 +217,27 @@ export async function createDesktopServer({root=ROOT,sessionDir,runWorker=spawnD
         const supplied=String(req.headers['x-cortex-key']??'');
         if(!/^[a-f0-9]{64}$/.test(supplied)||!timingSafeEqual(Buffer.from(supplied),Buffer.from(key)))return send(401,{error:'جلسة محلية غير صالحة.'});
         lastSeen=Date.now();
+        if(url.pathname==='/api/design'){
+          const designDir=path.join(root,'out','desktop-modern',demo?'demo-designs':'designs');
+          const readDesign=id=>{const file=path.join(designDir,id+'.json');if(!fs.existsSync(file))return null;if(fs.statSync(file).size>300000)throw new Error('ملف القالب أكبر من الحد المسموح.');return validateCustomDesign(JSON.parse(fs.readFileSync(file,'utf8')));};
+          if(req.method==='GET'){
+            const id=url.searchParams.get('guildId')||'default';if(id!=='default'&&!/^\d{16,22}$/.test(id))return send(400,{error:'Invalid server ID.'});
+            const saved=readDesign(id),design=saved??(id!=='default'?readDesign('default'):null)??defaultDesign();
+            return send(200,{design,saved:!!saved,permissionNames:Object.keys(P),templates:{ar:designTemplate('ar'),en:designTemplate('en')}});
+          }
+          if(req.method==='POST'){
+            if(state.busy)return send(409,{error:'انتظر اكتمال العملية الحالية.'});
+            if(!/^application\/json(?:;|$)/i.test(String(req.headers['content-type']??'')))return send(415,{error:'JSON required.'});
+            let size=0;const parts=[];for await(const part of req){size+=part.length;if(size>MAX_BODY){send(413,{error:'القالب أكبر من الحد المسموح.'});req.resume();return;}parts.push(part);}
+            let body;try{body=JSON.parse(Buffer.concat(parts).toString('utf8'));}catch{return send(400,{error:'JSON غير صالح.'});}
+            if(!body||Array.isArray(body)||Object.keys(body).some(k=>!['guildId','design'].includes(k)))return send(400,{error:'حقول القالب غير صالحة.'});
+            const id=body.guildId||'default';if(id!=='default'&&(typeof id!=='string'||!/^\d{16,22}$/.test(id)))return send(400,{error:'Invalid server ID.'});
+            const design=validateCustomDesign(body.design);fs.mkdirSync(designDir,{recursive:true});const file=path.join(designDir,id+'.json');fs.writeFileSync(file+'.tmp',JSON.stringify(design,null,2));fs.renameSync(file+'.tmp',file);
+            invalidate();log('تم حفظ قالب الهيكلة محليًا؛ لم يتغير السيرفر.');return send(200,{design,saved:true});
+          }
+          return send(405,{error:'Method not allowed.'});
+        }
+
         if(req.method==='GET'&&url.pathname==='/api/preferences')return send(200,{language:uiLanguage});
         if(req.method==='POST'&&url.pathname==='/api/preferences'){
           if(!/^application\/json(?:;|$)/i.test(String(req.headers['content-type']??'')))return send(415,{error:'JSON required.'});

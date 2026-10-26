@@ -1,3 +1,4 @@
+import {validateCustomDesign} from './custom-design.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import {DiscordAPI,snapshot} from './api.mjs';
@@ -19,14 +20,14 @@ async function main() {
   if(mode==='snapshot'||mode==='preview') {
     const s=await snapshot(api,guildId);write('snapshot.json',s);
     if(mode==='snapshot') {console.log('Configuration and available member assignments saved. Messages/attachments are not backed up.');return;}
-    const p=plan(s);write('plan.json',p);write('preview.md',renderPreview(s,p));
+    const custom=fs.existsSync(path.join(out,'design-input.json'))?validateCustomDesign(read('design-input.json')):null;const p=plan(s,undefined,custom);write('design.json',p.design);write('plan.json',p);write('preview.md',renderPreview(s,p));
     write('approval.json',{operation:'preview',guildId,approvalHash:p.approvalHash,sourceDigest:sourceDigest(),
       commit:process.env.GITHUB_SHA??null,runId:process.env.GITHUB_RUN_ID??null});
     console.log(renderPreview(s,p));
     if(p.blockers.length)throw new Error('Preview contains blockers; resolve them and generate a new preview.');
     return;
   }
-  const s=read('snapshot.json'),approval=read('approval.json'),p=plan(s);
+  const s=read('snapshot.json'),approval=read('approval.json'),p=plan(s,undefined,read('design.json'));
   if(s.guild.id!==guildId||approval.guildId!==guildId||approval.operation!=='preview'||approval.approvalHash!==p.approvalHash||approval.sourceDigest!==sourceDigest())throw new Error('Reviewed preview does not match this server, source code or plan. Generate a fresh preview.');
   if(process.env.GITHUB_ACTIONS==='true'&&(approval.commit!==process.env.GITHUB_SHA||approval.runId!==process.env.PREVIEW_RUN_ID))throw new Error('Preview run/revision mismatch.');
   write('plan.json',p);write('preview.md',renderPreview(s,p));

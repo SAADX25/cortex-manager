@@ -7,9 +7,11 @@ import {messageProtection} from './messages.mjs';
 
 export const CHANNEL_PERMISSIONS=['ViewChannel','SendMessages','ReadMessageHistory','AddReactions','EmbedLinks','AttachFiles','Connect','Speak','MoveMembers','ManageMessages','ManageChannels','ManageThreads','CreatePublicThreads','CreatePrivateThreads','SendMessagesInThreads'];
 const roleFields=r=>({id:r.id,name:r.name,color:r.colors?.primary_color??r.color??0,permissions:r.permissions,position:r.position,hoist:!!r.hoist,mentionable:!!r.mentionable,managed:!!r.managed,tags:r.tags??{}});
-const channelFields=c=>({id:c.id,name:c.name,type:c.type,parent_id:c.parent_id??null,topic:c.topic??'',rate_limit_per_user:c.rate_limit_per_user??0,user_limit:c.user_limit??0,permission_overwrites:[...(c.permission_overwrites??[])].sort((a,b)=>a.id.localeCompare(b.id))});
+const guildFields=g=>({id:g.id,name:g.name,icon:g.icon??null});
+export const guildIconURL=g=>/^\d{16,22}$/.test(g.id)&&/^(?:a_)?[a-f0-9]{32}$/.test(g.icon??'')?`https://cdn.discordapp.com/icons/${g.id}/${g.icon}.png?size=128`:null;
+const channelFields=c=>({id:c.id,name:c.name,type:c.type,position:c.position??0,parent_id:c.parent_id??null,topic:c.topic??'',rate_limit_per_user:c.rate_limit_per_user??0,user_limit:c.user_limit??0,permission_overwrites:[...(c.permission_overwrites??[])].sort((a,b)=>a.id.localeCompare(b.id))});
 const normalizedName=(name,type)=>{const value=String(name).normalize('NFKC').trim().toLowerCase();return type===0?value.replace(/\s+/g,'-'):value;};
-export const revision=(kind,item)=>digest(kind==='role'?roleFields(item):channelFields(item));
+export const revision=(kind,item)=>digest(kind==='guild'?guildFields(item):kind==='role'?roleFields(item):channelFields(item));
 export function channelProtection(s,c) {
   const protectedIds=protectedChannelIds(s);
   for(const child of s.channels.filter(x=>protectedIds.has(x.id)&&x.parent_id))protectedIds.add(child.parent_id);
@@ -21,13 +23,16 @@ export function channelProtection(s,c) {
 export function serverInventory(s) {
   const botBits=botPermissions(s);
   const topRole=s.roles.find(r=>s.botMember.roles.includes(r.id)&&r.position===botTopPosition(s));
+  const statistics=s.memberStatistics??(s.membersComplete?{total:s.members.length,totalApproximate:false,roles:Object.fromEntries(s.roles.filter(r=>r.id!==s.guild.id).map(r=>[r.id,s.members.filter(m=>m.roles.includes(r.id)).length]))}:{total:null,totalApproximate:false,roles:null});
   return {guildId:s.guild.id,guildName:s.guild.name,capturedAt:s.captured_at,
+    guildProfile:{...guildFields(s.guild),iconURL:guildIconURL(s.guild),revision:revision('guild',s.guild),readOnlyReason:has(botBits,P.ManageGuild)?null:'تغيير اسم السيرفر يحتاج صلاحية Manage Server للبوت.'},
+    memberStatistics:{total:statistics.total,totalApproximate:statistics.totalApproximate,roleCountsAvailable:statistics.roles!==null},
     botRole:topRole?{id:topRole.id,name:topRole.name,position:topRole.position}:null,
     permissions:Object.entries(P).map(([name,flag])=>({name,granted:has(botBits,flag)})),
     channelPermissionNames:CHANNEL_PERMISSIONS,
-    roles:[...s.roles].sort((a,b)=>b.position-a.position).map(r=>({...roleFields(r),revision:revision('role',r),readOnlyReason:roleProtection(s,r),
+    roles:[...s.roles].sort((a,b)=>b.position-a.position).map(r=>({...roleFields(r),memberCount:r.id===s.guild.id?statistics.total:statistics.roles?.[r.id]??null,memberCountApproximate:r.id===s.guild.id&&statistics.totalApproximate,revision:revision('role',r),readOnlyReason:roleProtection(s,r),
       flags:Object.entries(P).map(([name,flag])=>({name,granted:(BigInt(r.permissions)&flag)!==0n,canGrant:has(botBits,flag)}))})),
-    channels:[...s.channels].sort((a,b)=>(a.position??0)-(b.position??0)).map(c=>({...channelFields(c),revision:revision('channel',c),readOnlyReason:channelProtection(s,c),messageReadOnlyReason:messageProtection(s,c),
+    channels:[...s.channels].sort((a,b)=>(a.position??0)-(b.position??0)).map(c=>({...channelFields(c),revision:revision('channel',c),readOnlyReason:channelProtection(s,c),moveReadOnlyReason:channelProtection(s,c)||(c.parent_id&&channelProtection(s,s.channels.find(parent=>parent.id===c.parent_id)??c)?'القسم محمي؛ النقل معطّل':null),messageReadOnlyReason:messageProtection(s,c),
       overwrites:(c.permission_overwrites??[]).map(w=>({...w,flags:CHANNEL_PERMISSIONS.map(name=>({name,state:(BigInt(w.allow)&P[name])!==0n?'allow':(BigInt(w.deny)&P[name])!==0n?'deny':'inherit'}))}))})),
   };
 }
@@ -36,16 +41,73 @@ function integer(value,min,max,label) {if(!Number.isInteger(value)||value<min||v
 function knownKeys(value,allowed) {if(!value||Array.isArray(value)||typeof value!=='object'||Object.keys(value).some(k=>!allowed.includes(k)))throw new Error('حقول تعديل غير مسموح بها');}
 const sourceDigest=()=>digest(fs.readdirSync(new URL('.',import.meta.url)).filter(f=>f.endsWith('.mjs')).sort().map(f=>[f,fs.readFileSync(new URL(f,import.meta.url),'utf8')]));
 
+const snowflakeOrder=(a,b)=>BigInt(a.id)<BigInt(b.id)?-1:BigInt(a.id)>BigInt(b.id)?1:0;
+const channelBucket=c=>c.type===4?'category':[2,13].includes(c.type)?'voice':'text';
+function prepareMove(s,request){
+  const {kind,id,values}=request;if(!['role','channel'].includes(kind))throw new Error('نوع نقل غير مسموح');
+  knownKeys(values,['target_id','placement']);
+  if(Object.keys(request.permissionChanges??{}).length||Object.keys(request.overwriteChanges??{}).length)throw new Error('النقل لا يعدّل الصلاحيات');
+  if(!['before','after','inside'].includes(values.placement)||typeof values.target_id!=='string'||id===values.target_id)throw new Error('وجهة نقل غير صالحة');
+  const items=kind==='role'?s.roles:s.channels,source=items.find(x=>x.id===id),target=items.find(x=>x.id===values.target_id);
+  if(!source||!target)throw new Error('العنصر أو وجهة النقل غير موجودة؛ حدّث السيرفر');
+  if(revision(kind,source)!==request.revision)throw new Error('تغير العنصر منذ تحميله؛ حدّث السيرفر قبل التعديل');
+  const protect=x=>kind==='role'?roleProtection(s,x):channelProtection(s,x),bits=botPermissions(s);
+  if(!has(bits,kind==='role'?P.ManageRoles:P.ManageChannels))throw new Error('البوت لا يملك صلاحية ترتيب العناصر');
+  if(protect(source)||protect(target))throw new Error('العنصر أو الوجهة محمية ولا يمكن نقلها');
+  let siblings,parentId=source.parent_id??null;
+  if(kind==='role'){
+    if(values.placement==='inside')throw new Error('لا يمكن وضع رتبة داخل رتبة');
+    siblings=[...items].sort((a,b)=>b.position-a.position||snowflakeOrder(a,b));
+  }else{
+    if(values.placement==='inside'){
+      if(source.type===4||target.type!==4)throw new Error('اختر قسمًا لنقل الغرفة إليه');parentId=target.id;
+    }else{
+      if(channelBucket(source)!==channelBucket(target))throw new Error('رتّب الغرف النصية مع النصية والصوتية مع الصوتية');parentId=target.parent_id??null;
+    }
+    for(const parent of [source.parent_id,parentId].filter(Boolean)){
+      const category=s.channels.find(c=>c.id===parent);if(!category||protect(category))throw new Error('القسم محمي أو غير متاح للنقل');
+    }
+    if(parentId!==source.parent_id&&parentId&&s.channels.filter(c=>c.parent_id===parentId).length>=50)throw new Error('القسم المحدد ممتلئ');
+    if(items.some(c=>c.id!==source.id&&c.type===source.type&&(c.parent_id??null)===parentId&&normalizedName(c.name,c.type)===normalizedName(source.name,source.type)))throw new Error('توجد قناة بنفس الاسم في القسم المحدد');
+    siblings=items.filter(c=>channelBucket(c)===channelBucket(source)&&(source.type===4||(c.parent_id??null)===parentId)).sort((a,b)=>(a.position??0)-(b.position??0)||snowflakeOrder(a,b));
+  }
+  const ordered=siblings.filter(x=>x.id!==id);let index=values.placement==='inside'?ordered.length:ordered.findIndex(x=>x.id===target.id)+(values.placement==='after'?1:0);
+  if(index<0)throw new Error('وجهة نقل غير صالحة');ordered.splice(index,0,source);
+  const sameParent=kind==='role'||parentId===(source.parent_id??null),slots=siblings.map(x=>x.position??0);
+  // Keep protected positions and relative hierarchy fixed. Moving across a
+  // protected role/category would otherwise change it indirectly.
+  const useSlots=sameParent&&new Set(slots).size===slots.length;
+  const body=ordered.flatMap((item,i)=>{
+    const position=useSlots?slots[i]:kind==='role'?ordered.length-1-i:i;
+    const parentChanged=item.id===id&&kind==='channel'&&parentId!==(source.parent_id??null);
+    if((item.position??0)===position&&!parentChanged&&siblings[i]?.id===item.id)return [];
+    if(protect(item))throw new Error('لا يمكن عبور رتبة أو عنصر محمي أثناء الترتيب');
+    if(!Number.isInteger(position)||position<0||kind==='role'&&position>=botTopPosition(s))throw new Error('الموضع المطلوب أعلى من صلاحيات البوت');
+    return [{id:item.id,position,...(parentChanged?{parent_id:parentId}: {})}];
+  });
+  if(!body.length)throw new Error('العنصر موجود في هذا الموضع بالفعل');
+  const before=kind==='role'?roleFields(source):channelFields(source),nameOf=id=>s.channels.find(c=>c.id===id)?.name??'بدون قسم';
+  const move={kind,items:body,targetName:target.name,placement:values.placement,oldParentName:nameOf(source.parent_id),parentName:nameOf(parentId)};
+  const p={guildId:s.guild.id,guildName:s.guild.name,kind,action:'move',id,request,before,body,move,changes:body.map(item=>({field:'position',id:item.id,before:items.find(x=>x.id===item.id)?.position??0,after:item.position})),snapshotHash:fingerprint(s),sourceHash:sourceDigest()};
+  return {...p,approvalHash:digest(p)};
+}
+
 export function prepareEdit(s,request) {
   knownKeys(request,['kind','action','id','revision','values','permissionChanges','overwriteChanges']);
+  if(request.action==='move')return prepareMove(s,request);
   const {kind,action}=request;
-  if(!['role','channel'].includes(kind)||!['create','update'].includes(action))throw new Error('عملية تعديل غير مسموح بها');
-  const existing=action==='update'?(kind==='role'?s.roles:s.channels).find(x=>x.id===request.id):null;
+  if(!['role','channel','guild'].includes(kind)||!['create','update'].includes(action)||kind==='guild'&&action!=='update')throw new Error('عملية تعديل غير مسموح بها');
+  const existing=action==='update'?(kind==='guild'?[s.guild]:kind==='role'?s.roles:s.channels).find(x=>x.id===request.id):null;
   if(action==='update'&&!existing)throw new Error('العنصر غير موجود؛ حدّث السيرفر');
   if(existing&&revision(kind,existing)!==request.revision)throw new Error('تغير العنصر منذ تحميله؛ حدّث السيرفر قبل التعديل');
   const botBits=botPermissions(s),values=request.values??{},body={};
   let permissions=0n;
-  if(kind==='role') {
+  if(kind==='guild'){
+    if(!has(botBits,P.ManageGuild))throw new Error('تغيير اسم السيرفر يحتاج صلاحية Manage Server للبوت.');
+    knownKeys(values,['name']);body.name=text(values.name,100,'اسم السيرفر');
+    if(body.name.length<2)throw new Error('اسم السيرفر يجب أن يكون من حرفين إلى 100 حرف.');
+    if(Object.keys(request.permissionChanges??{}).length||Object.keys(request.overwriteChanges??{}).length)throw new Error('تخصيص السيرفر يقتصر على الاسم.');
+  } else if(kind==='role') {
     if(!has(botBits,P.ManageRoles))throw new Error('البوت لا يملك Manage Roles');
     if(existing&&roleProtection(s,existing))throw new Error('هذه الرتبة محمية ولا يمكن تعديلها');
     knownKeys(values,['name','color','hoist','mentionable']);
@@ -116,7 +178,7 @@ export function prepareEdit(s,request) {
     const candidate={...existing,...body,type};
     if(!canManageChannel(s,candidate))throw new Error('التعديل سيمنع البوت من إدارة القناة؛ عدّل الأذونات أولاً');
   }
-  const before=existing?(kind==='role'?roleFields(existing):channelFields(existing)):null;
+  const before=existing?(kind==='guild'?guildFields(existing):kind==='role'?roleFields(existing):channelFields(existing)):null;
   const fields=Object.entries(body).filter(([key,value])=>JSON.stringify(before?.[key])!==JSON.stringify(value));
   if(!fields.length)throw new Error('لا توجد تغييرات لحفظها');
   const plan={guildId:s.guild.id,guildName:s.guild.name,kind,action,id:existing?.id??null,request,before,body,
@@ -127,10 +189,11 @@ export function prepareEdit(s,request) {
   return {...plan,approvalHash:digest(plan)};
 }
 export function editSummary(p) {
+  if(p.action==='move')return [`السيرفر: ${p.guildName} (${p.guildId})`,`نقل: ${p.before.name}`,`الوجهة: ${p.move.targetName}`,`الموضع: ${{before:'قبل العنصر',after:'بعد العنصر',inside:'داخل القسم'}[p.move.placement]}`,...(p.kind==='channel'?[`القسم الحالي: ${p.move.oldParentName}`,`القسم الجديد: ${p.move.parentName}`,'تبقى أذونات القناة الحالية محفوظة؛ لا تتم مزامنتها مع القسم.']:['تبقى صلاحيات الرتب وأعضاؤها ثابتة. لا تتغير رتب القيادة أو البوتات المحمية.']),`عناصر يتغير ترتيبها: ${p.body.length}`,'لا حذف أو إنشاء أو تغيير أعضاء ضمن هذه العملية.'].join('\n');
   const labels={name:'الاسم',color:'اللون',hoist:'عرض منفصل',mentionable:'قابلة للمنشن',type:'نوع القناة',parent_id:'القسم',topic:'الوصف',rate_limit_per_user:'التهدئة بالثواني',user_limit:'حد الأعضاء'};
   const display=value=>value===null?'بدون':typeof value==='boolean'?(value?'نعم':'لا'):String(value);
   const fieldValue=(field,value)=>field==='parent_id'&&value?(p.parentNames[value]??value):field==='color'&&value!==null?'#'+Number(value).toString(16).padStart(6,'0'):field==='type'&&value!==null?({0:'نصية',2:'صوتية',4:'قسم'}[value]??display(value)):display(value);
-  return [`السيرفر: ${p.guildName} (${p.guildId})`,`${p.action==='create'?'إنشاء':'تعديل'} ${p.kind==='role'?'رتبة':'قناة / قسم'}: ${p.body.name??p.before.name}`,
+  return [`السيرفر: ${p.guildName} (${p.guildId})`,`${p.action==='create'?'إنشاء':'تعديل'} ${p.kind==='guild'?'اسم السيرفر':p.kind==='role'?'رتبة':'قناة / قسم'}: ${p.body.name??p.before.name}`,
     ...p.changes.filter(c=>!['permissions','permission_overwrites'].includes(c.field)).map(c=>`${labels[c.field]??c.field}: ${fieldValue(c.field,c.before)} → ${fieldValue(c.field,c.after)}`),
     ...Object.entries(p.request.permissionChanges??{}).map(([name,granted])=>`صلاحية ${name}: ${granted?'تفعيل':'إيقاف'}`),
     ...(p.request.overwriteChanges??[]).flatMap(change=>Object.entries(change.permissions).map(([name,state])=>`أذونات ${p.overwriteRoleNames[change.roleId]} / ${name}: ${{inherit:'وراثة',allow:'سماح',deny:'منع'}[state]}`)),
@@ -173,7 +236,7 @@ export async function applyEdit(api,guildId,confirmation,directory) {
   fs.mkdirSync(backup,{recursive:true});
   fs.writeFileSync(path.join(backup,'snapshot.json'),JSON.stringify(current,null,2));
   fs.writeFileSync(path.join(backup,'plan.json'),JSON.stringify(fresh,null,2));
-  const route=fresh.kind==='role'?`/guilds/${guildId}/roles${fresh.action==='update'?'/'+fresh.id:''}`:fresh.action==='create'?`/guilds/${guildId}/channels`:`/channels/${fresh.id}`;
+  const route=fresh.action==='move'?`/guilds/${guildId}/${fresh.kind==='role'?'roles':'channels'}`:fresh.kind==='guild'?`/guilds/${guildId}`:fresh.kind==='role'?`/guilds/${guildId}/roles${fresh.action==='update'?'/'+fresh.id:''}`:fresh.action==='create'?`/guilds/${guildId}/channels`:`/channels/${fresh.id}`;
   const result={success:false,guildId,approvalHash:fresh.approvalHash,method:fresh.action==='create'?'POST':'PATCH',route};
   try {result.entity=await api.call(result.method,route,fresh.body);result.success=true;return result;}
   catch(error){result.error=error.message;throw error;}

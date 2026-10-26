@@ -1,3 +1,4 @@
+import {defaultDesign,validateCustomDesign} from './custom-design.mjs';
 import {ROLES,CATEGORIES} from './design.mjs';
 import {botPermissions,effectiveRolePermissions,createOverwrites,canManageChannel} from './permissions.mjs';
 import {isLeadershipRole,roleProtection,protectedChannelIds,guardedAPI,fingerprint,digest} from './safety.mjs';
@@ -18,6 +19,7 @@ function verifyLeadership(original,current) {
 }
 
 export async function rebuild(api,s,p,{record=()=>{},save=()=>{},capture=snapshot,inventory=memberInventory}={}) {
+  const {roles:ROLES,categories:CATEGORIES}=validateCustomDesign(p.design??defaultDesign());
   const result={success:false,phase:'preflight',created:[],updated:[],deleted:[],migrated:[],unmigrated:[...p.unmigrated],
     retainedRoles:p.keepRoles.map(r=>({id:r.id,name:r.name,reason:r.reason})),retainedChannels:p.keepChannels.map(c=>({id:c.id,name:c.name,reason:c.reason})),
     permissionGaps:p.missingRights,approvalHash:p.approvalHash};
@@ -35,7 +37,7 @@ export async function rebuild(api,s,p,{record=()=>{},save=()=>{},capture=snapsho
     // community roles below them, without issuing any role reorder request.
     for(const r of ROLES) {
       if(p.preservedRoles[r.key])continue;
-      const body={name:r.name,color:r.color,hoist:['admin','headmod','mod','vip'].includes(r.key),mentionable:false,
+      const body={name:r.name,color:r.color,hoist:r.hoist??['admin','headmod','mod','vip'].includes(r.key),mentionable:r.mentionable??false,
         permissions:String(effectiveRolePermissions(r.permissions,botBits).granted)};
       if(roleIds[r.key]) {
         const live=await api.get(`${prefix}/roles`),role=live.find(x=>x.id===roleIds[r.key]);

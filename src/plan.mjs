@@ -1,3 +1,4 @@
+import {defaultDesign,validateCustomDesign} from './custom-design.mjs';
 import {ROLES,CATEGORIES,ROLE_MIGRATIONS} from './design.mjs';
 import {P,botPermissions,has,canManageChannel,effectiveRolePermissions} from './permissions.mjs';
 import {isLeadershipRole,roleProtection,protectedChannelIds,digest,fingerprint} from './safety.mjs';
@@ -20,8 +21,8 @@ export function validateDesign(migrations=ROLE_MIGRATIONS) {
   for(const [id,key] of Object.entries(migrations))if(!/^\d{16,22}$/.test(id)||!roleKeys.has(key))throw new Error(`Invalid migration ${id} -> ${key}`);
 }
 
-export function plan(s,mappings=ROLE_MIGRATIONS) {
-  validateDesign(mappings);
+export function plan(s,mappings=ROLE_MIGRATIONS,custom=null) {
+  const design=validateCustomDesign(custom??{...defaultDesign(),migrations:mappings});const ROLES=design.roles,CATEGORIES=design.categories;mappings=design.migrations;
   const guildPerm=botPermissions(s),blockers=[],warnings=[];
   const reusedRoles={},preservedRoles={},reusedCategories={},reusedChannels={},preservedSlots={};
   const occupiedRoles=new Set(),occupiedChannels=new Set();
@@ -41,8 +42,8 @@ export function plan(s,mappings=ROLE_MIGRATIONS) {
   // Keep Community functions and parents unchanged; reuse their design slots.
   const rules=s.channels.find(c=>c.id===s.guild.rules_channel_id)??s.channels.find(c=>c.name==='rules');
   const updates=s.channels.find(c=>c.id===s.guild.public_updates_channel_id)??s.channels.find(c=>c.name==='moderator-only');
-  if(rules)preservedSlots.rules=rules.id;
-  if(updates)preservedSlots.audit=updates.id;
+  if(rules&&CATEGORIES.some(c=>c.channels.some(ch=>ch.key==='rules')))preservedSlots.rules=rules.id;
+  if(updates&&CATEGORIES.some(c=>c.channels.some(ch=>ch.key==='audit')))preservedSlots.audit=updates.id;
   for(const spec of ROLES) {
     const candidates=s.roles.filter(r=>r.name===spec.name);
     if(candidates.length>1)blockers.push(`Ambiguous duplicate role ${spec.name}; resolve duplicates before rebuilding.`);
@@ -106,12 +107,13 @@ export function plan(s,mappings=ROLE_MIGRATIONS) {
     deleteRoles:oldRoles.length,deleteChannels:oldChannels.length};
   if(s.channels.length+totals.createCategories+totals.createChannels>500)blockers.push('Insufficient channel capacity to create the new structure before deletion.');
   if(s.roles.length+totals.createRoles>250)blockers.push('Insufficient role capacity to create before deletion.');
-  const result={reusedRoles,preservedRoles,reusedCategories,reusedChannels,preservedSlots,oldRoles,oldChannels,keepRoles,
+  const result={design,reusedRoles,preservedRoles,reusedCategories,reusedChannels,preservedSlots,oldRoles,oldChannels,keepRoles,
     keepChannels:[...keepChannels.values()],migrations,unmigrated,blockers,warnings,missingRights,missingChannelRights,totals};
   return {...result,approvalHash:digest({snapshot:fingerprint(s),design:{ROLES,CATEGORIES,mappings},plan:result})};
 }
 
 export function renderPreview(s,p) {
+  const {roles:ROLES,categories:CATEGORIES}=p.design??defaultDesign();
   const items=(xs,fn)=>xs.length?xs.map(x=>`- ${fn(x)}`):['- None'];
   return [
     '# Cortex Manager — PREVIEW ONLY','',`**Server:** ${s.guild.name} (\`${s.guild.id}\`)`,
@@ -124,8 +126,8 @@ export function renderPreview(s,p) {
     '- OWNER, CO_OWNER, @everyone, managed/integration and unmanageable roles are preserved.',
     '', '## Roles to create, update or preserve',...ROLES.map(r=>`- ${p.preservedRoles[r.key]?'PRESERVE '+p.preservedRoles[r.key]:p.reusedRoles[r.key]?'UPDATE '+p.reusedRoles[r.key]:'CREATE'} ${r.name} — desired #${r.color.toString(16).padStart(6,'0')} — desired ${r.permissions.join(', ')||'channel overwrites only'}${p.preservedRoles[r.key]?' (existing color and permissions unchanged)':''}`),
     '', '## Categories and channels to create, update or preserve',
-    ...CATEGORIES.flatMap(c=>[`### ${c.name} (${p.keepChannels.some(x=>x.id===p.reusedCategories[c.key])?'preserve unchanged':p.reusedCategories[c.key]?'reuse '+p.reusedCategories[c.key]:'create'}; ${c.access})`,
-      ...c.channels.map(ch=>`- ${p.preservedSlots[ch.key]?'PRESERVE '+p.preservedSlots[ch.key]:p.reusedChannels[ch.key]?'UPDATE '+p.reusedChannels[ch.key]:'CREATE'} ${ch.type==='voice'?'🔊':'#'} ${ch.name}${ch.readonly?' (read-only)':''}${ch.vipOnly?' (VIP private)':''}`)]),
+    ...CATEGORIES.flatMap(c=>[`### ${c.name} (${p.keepChannels.some(x=>x.id===p.reusedCategories[c.key])?'preserve unchanged':p.reusedCategories[c.key]?'reuse '+p.reusedCategories[c.key]:'create'}; ${c.access}${c.access==='staff'?'; access roles: '+c.staffKeys.join(', '):''})`,
+      ...c.channels.flatMap(ch=>[`- ${p.preservedSlots[ch.key]?'PRESERVE '+p.preservedSlots[ch.key]:p.reusedChannels[ch.key]?'UPDATE '+p.reusedChannels[ch.key]:'CREATE'} ${ch.type==='voice'?'🔊':'#'} ${ch.name}${ch.readonly?' (read-only)':''}${ch.vipOnly?' (VIP private)':''}`,...((ch.accessKeys?.length)?['  Private access roles: '+ch.accessKeys.join(', ')]:[]),...(ch.readonly?['  Read-only writers: '+(ch.readonlyWriters??['admin','headmod','mod']).join(', ')]:[]),...(ch.topic?['  Topic: '+ch.topic]:[]),...(ch.message?['  Opening message (new channels only):',...ch.message.split('\n').map(line=>'  '+line)]:[])])]),
     '', '## Preserved roles',...items(p.keepRoles,r=>`${r.name} — ${r.id}: ${r.reason}`),
     '', '## Preserved channels and categories (unchanged)',...items(p.keepChannels,c=>`${c.name} — ${c.id}: ${c.reason}`),
     '', '## Old channels planned for deletion',...items(p.oldChannels,c=>`${c.name} — ${c.id}`),

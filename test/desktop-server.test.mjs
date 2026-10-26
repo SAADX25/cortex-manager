@@ -9,6 +9,7 @@ import {createDesktopServer,desktopDemoSnapshot,spawnDesktopWorker} from '../src
 import {CONFIRMATION} from '../src/safety.mjs';
 import {diagnostics} from '../src/desktop-worker.mjs';
 import {sample,ID} from './helpers/fake.mjs';
+import {defaultDesign} from '../src/custom-design.mjs';
 
 function controlledRunner() {
   const calls=[];
@@ -34,6 +35,27 @@ async function setup(t,options={}) {
   return {...bridge,...control,base,request,state,action,settled};
 }
 const credentials={token:'desktop-test-token-never-use',guildId:ID};
+
+test('blueprint storage validates and persists per guild without Discord writes, and invalidates approvals',async t=>{
+ const s=await setup(t),read=()=>s.request('/api/design?guildId='+ID),save=body=>s.request('/api/design',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+ assert.equal((await fetch(s.base+'/api/design')).status,401);const first=await (await read()).json();assert.equal(first.saved,false);assert.match(first.templates.en.categories[0].name,/Welcome/);
+ const design=defaultDesign();design.roles[0].name='Custom edited staff';assert.equal((await save({guildId:ID,design})).status,200);assert.equal(s.calls.length,0);
+ assert.equal((await (await read()).json()).design.roles[0].name,'Custom edited staff');assert.equal((await (await s.request('/api/design?guildId=999999999999999999')).json()).saved,false);
+ assert.equal((await save({guildId:'../escape',design})).status,400);assert.equal((await save({guildId:ID,design:{...design,roles:[]}})).status,400);
+ await s.action('preview',credentials);const out=path.join(s.sessionDir,'out');fs.writeFileSync(path.join(out,'preview.md'),'Reviewed');fs.writeFileSync(path.join(out,'plan.json'),JSON.stringify({approvalHash:'hash'}));s.calls[0].finish();await s.settled();assert.ok((await s.state()).preview);
+ await save({guildId:ID,design});assert.equal((await s.state()).preview,null);
+ const root=path.dirname(s.sessionDir);await s.close();const restored=await createDesktopServer({root});t.after(()=>restored.close());const response=await fetch(`http://127.0.0.1:${restored.port}/api/design?guildId=${ID}`,{headers:{'X-Cortex-Key':restored.key}});assert.equal((await response.json()).design.roles[0].name,'Custom edited staff');
+});
+
+test('role grant bridge binds member and role to confirmation and demo cannot grant',async t=>{
+ const s=await setup(t),p={guildId:ID,roleId:'555555555555555555',memberId:'888888888888888888',approvalHash:'reviewed',administrator:true},c={...p,confirmed:true,acknowledgeAdmin:true};
+ assert.equal((await s.action('role-grant-apply',{...credentials,roleGrantConfirmation:c})).status,400);
+ await s.action('role-grant-preview',{...credentials,roleGrantRequest:{roleId:p.roleId,memberId:p.memberId}});s.calls[0].output({event:'role-grant-preview',data:p});s.calls[0].finish();await s.settled();
+ for(const change of [{memberId:'999999999999999999'},{roleId:'999999999999999999'},{acknowledgeAdmin:false},{confirmed:false}])assert.equal((await s.action('role-grant-apply',{...credentials,roleGrantConfirmation:{...c,...change}})).status,400);
+ assert.equal((await s.action('role-grant-apply',{...credentials,roleGrantConfirmation:c})).status,202);assert.equal((await s.state()).roleGrantPreview,null);s.calls[1].finish();await s.settled();
+ assert.equal((await s.action('role-grant-apply',{...credentials,roleGrantConfirmation:c})).status,400);
+ const demo=await setup(t,{demo:true});assert.equal((await demo.action('role-grant-apply',{roleGrantConfirmation:c})).status,403);
+});
 
 test('language preference is authenticated, strictly validated, persists across launches and never starts a worker',async t=>{
   const s=await setup(t),send=value=>s.request('/api/preferences',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(value)});
@@ -229,7 +251,12 @@ test('HTTP bridge drives the real worker over stdin with mocked GET-only Discord
   const prior=process.env.NODE_OPTIONS;process.env.NODE_OPTIONS=`--import=${pathToFileURL(mock).href}`;
   t.after(()=>{if(prior===undefined)delete process.env.NODE_OPTIONS;else process.env.NODE_OPTIONS=prior;});
   assert.equal((await s.action('inventory',credentials)).status,202);const inventory=await s.settled();assert.equal(inventory.diagnostics.guildId,ID);assert.ok(inventory.inventory.channels.length>0);
-  assert.equal((await s.action('preview',credentials)).status,202);const state=await s.settled();assert.equal(state.preview.ready,true);assert.match(state.preview.summary,/PERMANENTLY DELETE/);assert.ok(state.reports.files.some(file=>file.name==='approval.json'));
+  assert.equal(inventory.inventory.memberStatistics.total,3);assert.equal(inventory.inventory.roles.find(r=>r.name==='★ OWNER ★').memberCount,1);
+  const design=defaultDesign();design.roles[0].name='Custom reviewed administrator';design.categories[0].channels[0].name='custom-reviewed-welcome';
+  assert.equal((await s.action('preview',{...credentials,design})).status,202);const state=await s.settled();assert.equal(state.preview.ready,true);assert.match(state.preview.summary,/PERMANENTLY DELETE/);assert.ok(state.reports.files.some(file=>file.name==='approval.json'));
+  assert.equal(state.preview.plan.design.roles[0].name,design.roles[0].name);assert.match(state.preview.summary,/custom-reviewed-welcome/);
+  const reviewed=JSON.parse(fs.readFileSync(path.join(s.sessionDir,'out','design.json'),'utf8'));assert.equal(reviewed.categories[0].channels[0].name,'custom-reviewed-welcome');
+  design.roles[0].color++;const changed=await s.action('rebuild',{...credentials,design,confirmGuildId:ID,confirmDelete:CONFIRMATION});assert.equal(changed.status,400);assert.match((await changed.json()).error,/تغيّر القالب/);
   const calls=fs.readFileSync(requests,'utf8').trim().split('\n').map(JSON.parse);assert.ok(calls.length>10);assert.ok(calls.every(call=>call.method==='GET'));assert.ok(!JSON.stringify(state).includes(credentials.token));
 });
 
@@ -240,6 +267,20 @@ test('reviewing any edit invalidates a previous rebuild approval',async t=>{
   await s.action('edit-preview',{...credentials,editRequest:{kind:'role',action:'create',values:{name:'🎮・أعضاء'}}});
   assert.equal((await s.state()).preview,null);s.calls[1].finish();await s.settled();
   assert.equal((await s.action('rebuild',{...credentials,confirmGuildId:ID,confirmDelete:CONFIRMATION})).status,409);
+});
+
+test('real worker previews and grants a role over HTTP using only an additive mocked PUT',async t=>{
+ const repo=fileURLToPath(new URL('../',import.meta.url)),s=await setup(t,{runWorker:(mode,config,options)=>spawnDesktopWorker(mode,config,{...options,root:repo})});
+ const mock=path.join(s.sessionDir,'grant-mock.mjs'),calls=path.join(s.sessionDir,'grant-calls.jsonl');
+ fs.writeFileSync(mock,`import fs from 'node:fs';import {sample,fakeServer} from ${JSON.stringify(new URL('./helpers/fake.mjs',import.meta.url).href)};
+ const server=fakeServer(sample());globalThis.fetch=async(url,options)=>{const route=new URL(url).pathname.replace('/api/v10','');let result;
+ if(options.method==='GET')result=await server.api.get(route);else {if(options.method!=='PUT')throw new Error('Only PUT allowed');fs.appendFileSync(${JSON.stringify(calls)},JSON.stringify({method:options.method,route})+'\\n');result=await server.api.call('PUT',route);}
+ return result===null?new Response(null,{status:204}):new Response(JSON.stringify(result));};`);
+ const prior=process.env.NODE_OPTIONS;process.env.NODE_OPTIONS=`--import=${pathToFileURL(mock).href}`;t.after(()=>{if(prior===undefined)delete process.env.NODE_OPTIONS;else process.env.NODE_OPTIONS=prior;});
+ const roleId='555555555555555555',memberId='888888888888888888';
+ await s.action('role-grant-preview',{...credentials,roleGrantRequest:{roleId,memberId}});const preview=await s.settled();assert.equal(preview.error,null);assert.equal(fs.existsSync(calls),false);assert.equal(preview.roleGrantPreview.memberId,memberId);
+ await s.action('role-grant-apply',{...credentials,roleGrantConfirmation:{confirmed:true,guildId:ID,roleId,memberId,approvalHash:preview.roleGrantPreview.approvalHash}});const result=await s.settled();assert.equal(result.error,null);assert.equal(result.result.success,true);
+ assert.deepEqual(fs.readFileSync(calls,'utf8').trim().split('\n').map(JSON.parse),[{method:'PUT',route:`/guilds/${ID}/members/${memberId}/roles/${roleId}`}]);
 });
 
 test('real worker can review, confirm and save role and voice edits, then create a channel over HTTP',async t=>{
@@ -282,6 +323,12 @@ test('real worker can review, confirm and save role and voice edits, then create
   const sent=await s.settled();assert.equal(sent.error,null);assert.equal(sent.messageResult.success,true);
   const allWrites=fs.readFileSync(requests,'utf8').trim().split('\n').map(JSON.parse).filter(r=>r.method!=='GET');
   assert.deepEqual(allWrites.at(-1),{method:'POST',route:`/channels/${destination.id}/messages`});assert.equal(allWrites.length,4);
+  await save({kind:'channel',action:'create',values:{name:'Move destination',type:4}});
+  inv=await load();const moveCategory=inv.channels.find(c=>c.name==='Move destination'),moveVoice=inv.channels.find(c=>c.id===voice.id);
+  await save({kind:'channel',action:'move',id:moveVoice.id,revision:moveVoice.revision,values:{target_id:moveCategory.id,placement:'inside'}});
+  inv=await load();assert.equal(inv.channels.find(c=>c.id===voice.id).parent_id,moveCategory.id);
+  const moveWrite=fs.readFileSync(requests,'utf8').trim().split('\n').map(JSON.parse).filter(r=>r.method!=='GET').at(-1);assert.deepEqual(moveWrite,{method:'PATCH',route:`/guilds/${ID}/channels`});
+
 });
 
 test('server without a loaded client exits after its startup grace period',async t=>{
