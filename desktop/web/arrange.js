@@ -28,7 +28,7 @@ function mount(root,o){
  const decorate=(node,item,category=false)=>{
   node.dataset.dropId=item.id;node.classList.add('arrange-row');if(item.moveReadOnlyReason&&!item.readOnlyReason){const lock=document.createElement('span');lock.className='arrange-grip';lock.title='القسم محمي؛ النقل معطّل';lock.innerHTML=glyph('lock');node.append(lock);}if(item.readOnlyReason||item.moveReadOnlyReason||!o.inventory.permissions.some(p=>p.name===(o.kind==='role'?'ManageRoles':'ManageChannels')&&p.granted))return;
   node.draggable=allowed(item);node.dataset.dragId=item.id;
-  const grip=document.createElement('span');grip.className='arrange-grip';grip.setAttribute('aria-hidden','true');grip.innerHTML=glyph('grip');node.prepend(grip);
+  const grip=document.createElement('button');grip.type='button';grip.className='arrange-grip';grip.setAttribute('aria-label','نقل العنصر');grip.title='نقل العنصر';grip.disabled=!allowed(item);grip.innerHTML=glyph('grip');node.prepend(grip);
   grip.onpointerdown=e=>{
    if(e.button!==0||!allowed(item))return;e.preventDefault();e.stopPropagation();const x=e.clientX,y=e.clientY;let started=false;grip.setPointerCapture(e.pointerId);pointerGrab={grip,id:e.pointerId};
    grip.onpointermove=event=>{if(!started&&Math.hypot(event.clientX-x,event.clientY-y)<6)return;if(!started){started=true;source={item,node};node.classList.add('is-dragging');root.classList.add('arrange-active');ghost=document.createElement('div');ghost.className='arrange-ghost';ghost.textContent=item.name;document.body.append(ghost);}ghost.style.left=(event.clientX+15)+'px';ghost.style.top=(event.clientY+12)+'px';highlight(event.clientX,event.clientY);};
@@ -36,9 +36,8 @@ function mount(root,o){
    grip.onpointercancel=()=>{grip.onpointermove=null;grip.onpointerup=null;stop();};
   };
 
-  const move=document.createElement('button');move.type='button';move.className='arrange-button';move.setAttribute('aria-label','نقل العنصر');move.title='نقل العنصر';move.disabled=!allowed(item);move.innerHTML=glyph('move');
-  const label=node.querySelector('.label,.emoji');if(label){label.id='move-label-'+item.id;move.setAttribute('aria-describedby',label.id);}
-  move.onclick=e=>{e.preventDefault();e.stopPropagation();o.onMove(item,null,null);};node.append(move);
+  const label=node.querySelector('.label,.emoji');if(label){label.id='move-label-'+item.id;grip.setAttribute('aria-describedby',label.id);}
+  grip.onclick=e=>{e.preventDefault();e.stopPropagation();if(allowed(item))o.onMove(item,null,null);};
   node.ondragstart=e=>{if(!allowed(item)||!e.dataTransfer){e.preventDefault();return;}source={item,node};suppressClickUntil=Date.now()+350;node.classList.add('is-dragging');root.classList.add('arrange-active');e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('application/x-cortex-entity',item.id);ghost=document.createElement('div');ghost.className='arrange-ghost';ghost.textContent=item.name;document.body.append(ghost);e.dataTransfer.setDragImage(ghost,30,20);};
   node.ondragend=()=>{suppressClickUntil=Date.now()+350;stop();};
  };
@@ -48,7 +47,7 @@ function mount(root,o){
  root.ondragover=e=>{if(!source)return;e.preventDefault();e.dataTransfer.dropEffect=highlight(e.clientX,e.clientY)?'move':'none';};
  root.ondrop=e=>{if(!source)return;e.preventDefault();finish();};
  root.ondragleave=e=>{if(!root.contains(e.relatedTarget)){clearMark();clearTimeout(hoverTimer);hoverTimer=null;}};
- const help=document.createElement('small');help.className='arrange-help';help.textContent=o.query?'امسح البحث لتغيير ترتيب العناصر.':o.busy?'معاينة نقل؛ التأكيد مطلوب للحفظ.':'اسحب من المقبض أو استخدم زر النقل.';root.append(help);
+ const help=document.createElement('small');help.className='arrange-help';help.textContent=o.query?'امسح البحث لتغيير ترتيب العناصر.':o.busy?'معاينة نقل؛ التأكيد مطلوب للحفظ.':'اسحب من المقبض أو اضغطه لاختيار مكان النقل.';root.append(help);
  if(!matchMedia('(prefers-reduced-motion: reduce)').matches)for(const node of root.querySelectorAll('[data-drop-id]')){const old=previous.get(node.dataset.dropId),now={top:node.getBoundingClientRect().top-root.getBoundingClientRect().top+root.scrollTop};if(old&&Math.abs(old.top-now.top)>1&&Math.abs(old.top-now.top)<800)node.animate([{transform:`translateY(${old.top-now.top}px)`},{transform:'translateY(0)'}],{duration:230,easing:'cubic-bezier(.2,.8,.2,1)'});}previous.clear();
 }
 window.CortexArrange={capture,mount};

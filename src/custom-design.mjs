@@ -35,5 +35,7 @@ export function designTemplate(language){
   let i=0;d.categories.forEach((c,j)=>{c.name=c.name.slice(0,c.name.indexOf('•')+1)+' '+categories[j];c.channels.forEach(ch=>{const label=channels[i++];ch.name=ch.name.split('・')[0]+'・'+label;ch.topic=ch.type==='text'?label.replaceAll('-',' ')+' · Community space':'';delete ch.message;});});
   d.categories[0].channels[0].message='**Welcome to our community!** 🎮\nRead the rules, introduce yourself and enjoy your stay.';
   d.categories[0].channels[1].message='**Community Rules** 📜\n1. Respect everyone. No harassment or hate speech.\n2. No spam, scams or malicious links.\n3. Respect privacy and use the right channels.\n4. Follow staff guidance and Discord Community Guidelines.';
+  d.categories[0].channels.find(ch=>ch.key==='roles').message='**Role Guide**\n'+d.roles.map(r=>r.name).join('\n')+'\nRoles are assigned by server staff.';
+  d.categories.find(c=>c.key==='support').channels.find(ch=>ch.key==='reports').message='**Reporting Issues** 🚨\nProtect your privacy. Do not post sensitive information or member details publicly. Contact the moderation team privately or use the ticket system when available.';
   return validateCustomDesign(d);
 }

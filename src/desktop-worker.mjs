@@ -1,3 +1,5 @@
+import {previewBatch,applyBatch,batchPublic} from './batch-editor.mjs';
+import {readPermissionSimulation} from './permission-simulator.mjs';
 import fs from 'node:fs';
 import {validateCustomDesign} from './custom-design.mjs';
 import {previewRoleGrant,applyRoleGrant,roleGrantPublic} from './role-grants.mjs';
@@ -42,6 +44,9 @@ export async function runDesktopWorker(mode,{input=process.stdin,output=process.
   }
   lines.close();
   if(['check','inventory'].includes(mode)) {const api=new DiscordAPI(token),s=await snapshot(api,guildId,{includeMembers:false});s.memberStatistics=await readMemberCounts(api,guildId);emit({event:'diagnostics',data:diagnostics(s)});return;}
+  if(mode==='batch-preview'){const p=await previewBatch(new DiscordAPI(token),guildId,config.batchRequests,path.join(process.cwd(),'out'));emit({event:'batch-preview',data:batchPublic(p)});return;}
+  if(mode==='batch-apply'){const result=await applyBatch(new DiscordAPI(token),guildId,config.batchConfirmation,path.join(process.cwd(),'out'));emit({event:'batch-applied',data:result});return;}
+  if(mode==='permission-simulate'){const result=await readPermissionSimulation(new DiscordAPI(token),guildId,config.simulationRequest);emit({event:'permission-simulation',data:result});return;}
   if(mode==='role-grant-preview'){const p=await previewRoleGrant(new DiscordAPI(token),guildId,config.roleGrantRequest,path.join(process.cwd(),'out'));emit({event:'role-grant-preview',data:roleGrantPublic(p)});return;}
   if(mode==='role-grant-apply'){const result=await applyRoleGrant(new DiscordAPI(token),guildId,config.roleGrantConfirmation,path.join(process.cwd(),'out'));emit({event:'role-granted',data:result});return;}
   if(mode==='edit-preview') {const p=await previewEdit(new DiscordAPI(token),guildId,config.editRequest,path.join(process.cwd(),'out'));emit({event:'edit-preview',data:{approvalHash:p.approvalHash,summary:editSummary(p),changes:p.changes,...(p.move?{move:p.move}:{})}});return;}

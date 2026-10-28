@@ -3,9 +3,13 @@ $projectRoot = Split-Path -Parent $PSScriptRoot
 $applicationPath = & (Join-Path $PSScriptRoot 'Launch.ps1') -BuildOnly
 $nodePath = (Get-Command node.exe -ErrorAction Stop).Source
 if (-not (Test-Path -LiteralPath $applicationPath)) { throw 'Modern desktop executable was not built.' }
-foreach ($asset in @('index.html','app.js','i18n.js','designer.js','arrange.js','styles.css','favicon.svg')) {
+foreach ($asset in @('index.html','app.js','i18n.js','designer.js','arrange.js','workspace-drafts.js','workbench-ui.js','styles.css','favicon.svg')) {
     if (-not (Test-Path -LiteralPath (Join-Path $PSScriptRoot ('web\' + $asset)))) { throw "Missing modern UI asset: $asset" }
 }
+& $nodePath --check (Join-Path $PSScriptRoot 'web\workbench-ui.js')
+if ($LASTEXITCODE -ne 0) { throw 'Workbench UI syntax check failed.' }
+& $nodePath --check (Join-Path $PSScriptRoot 'web\workspace-drafts.js')
+if ($LASTEXITCODE -ne 0) { throw 'Workspace draft JavaScript syntax check failed.' }
 & $nodePath --check (Join-Path $PSScriptRoot 'web\app.js')
 if ($LASTEXITCODE -ne 0) { throw 'Modern UI JavaScript syntax check failed.' }
 & $nodePath --check (Join-Path $PSScriptRoot 'web\i18n.js')

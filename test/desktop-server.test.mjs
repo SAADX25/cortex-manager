@@ -31,10 +31,70 @@ async function setup(t,options={}) {
   const request=(url='/api/state',init={})=>fetch(base+url,{...init,headers:{'X-Cortex-Key':bridge.key,...init.headers}});
   const state=async()=>{const response=await request();assert.equal(response.status,200);return response.json();};
   const action=(name,config={})=>request('/api/action',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:name,config})});
-  const settled=async()=>{for(let i=0;i<200;i++){const value=await state();if(!value.busy)return value;await new Promise(resolve=>setTimeout(resolve,10));}throw new Error('Mock operation never settled');};
+  const settled=async()=>{for(let i=0;i<600;i++){const value=await state();if(!value.busy)return value;await new Promise(resolve=>setTimeout(resolve,10));}throw new Error('Mock operation never settled');};
   return {...bridge,...control,base,request,state,action,settled};
 }
 const credentials={token:'desktop-test-token-never-use',guildId:ID};
+
+test('blueprint autosave uses a revision to reject overwriting a newer draft from another window',async t=>{
+ const s=await setup(t),url='/api/design?guildId='+ID,initial=await (await s.request(url)).json();
+ const save=body=>s.request('/api/design',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+ const first=structuredClone(initial.design);first.categories[0].name='First window';
+ const response=await save({guildId:ID,design:first,baseRevision:initial.revision});assert.equal(response.status,200);const updated=await response.json();assert.notEqual(updated.revision,initial.revision);
+ const other=structuredClone(initial.design);other.categories[0].name='Old second window';assert.equal((await save({guildId:ID,design:other,baseRevision:initial.revision})).status,409);
+ assert.equal((await (await s.request(url)).json()).design.categories[0].name,'First window');assert.equal(s.calls.length,0);
+});
+
+test('workspace API authenticates, persists drafts without workers and invalidates a reviewed batch on changes',async t=>{
+ const s=await setup(t),post=body=>s.request('/api/workspace',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+ assert.equal((await fetch(s.base+'/api/workspace?guildId='+ID)).status,401);
+ const first=await (await s.request('/api/workspace?guildId='+ID)).json(),snap=sample();
+ const role=snap.roles.find(r=>r.id==='555555555555555555'),inv=diagnostics(snap).inventory;
+ const request={kind:'role',action:'update',id:role.id,revision:inv.roles.find(r=>r.id===role.id).revision,values:{name:'Workspace role'},permissionChanges:{}};
+ const entry={key:'role:'+role.id,request,tab:'general',overwriteRole:'',staged:true};
+ let response=await post({guildId:ID,baseRevision:first.revision,entries:[entry]});assert.equal(response.status,200);let saved=await response.json();assert.equal(s.calls.length,0);
+ assert.equal((await post({guildId:ID,baseRevision:first.revision,entries:[]})).status,409);
+ assert.equal((await post({guildId:'../escape',baseRevision:first.revision,entries:[]})).status,400);
+ assert.equal((await post({guildId:ID,baseRevision:saved.revision,entries:[{...entry,token:'never persist'}]})).status,400);
+ await s.action('batch-preview',{...credentials,batchRequests:[request]});assert.equal(s.calls[0].mode,'batch-preview');s.calls[0].output({event:'batch-preview',data:{guildId:ID,approvalHash:'reviewed'}});s.calls[0].finish();await s.settled();assert.ok((await s.state()).batchPreview);
+ response=await post({guildId:ID,baseRevision:saved.revision,entries:[{...entry,staged:false}]});assert.equal(response.status,200);assert.equal((await s.state()).batchPreview,null);
+ assert.equal((await s.action('batch-apply',{...credentials,batchConfirmation:{guildId:ID,confirmed:true,approvalHash:'reviewed'}})).status,400);
+});
+
+test('demo reviews batches and simulates permissions without workers and refuses real batch execution',async t=>{
+ const s=await setup(t,{demo:true}),value=await s.state(),role=value.inventory.roles.find(r=>!r.readOnlyReason),channel=value.inventory.channels.find(c=>c.type===0);
+ const request={kind:'role',action:'update',id:role.id,revision:role.revision,values:{name:'Demo changed name'},permissionChanges:{}};
+ assert.equal((await s.action('batch-preview',{batchRequests:[request]})).status,202);assert.equal((await s.state()).batchPreview.count,1);
+ assert.equal((await s.action('batch-apply',{batchConfirmation:{confirmed:true}})).status,403);
+ assert.equal((await s.action('permission-simulate',{simulationRequest:{channelId:channel.id,memberId:'900000000000001005'}})).status,202);const p=(await s.state()).simulation;assert.equal(p.channelId,channel.id);assert.equal(p.memberId,'900000000000001005');assert.equal(s.calls.length,0);
+});
+
+test('server bookmarks restore name and icon offline, switch without workers and invalidate old approvals',async t=>{
+ const s=await setup(t,{credentialStore:{async load(){return {...credentials};}}});
+ assert.equal((await s.state()).serverProfiles[0].id,ID);
+ await s.action('inventory',credentials);const snap=sample();snap.guild.icon='a'.repeat(32);
+ s.calls[0].output({event:'diagnostics',data:diagnostics(snap)});s.calls[0].finish();await s.settled();
+ const remembered=(await s.state()).serverProfiles[0];assert.equal(remembered.name,snap.guild.name);assert.match(remembered.iconURL,/cdn\.discordapp\.com\/icons/);
+ const other='777777777777777777';assert.equal((await s.action('server-save',{guildId:other})).status,202);
+ assert.equal((await s.action('server-save',{guildId:other,token:'no secrets allowed'})).status,400);
+ assert.equal((await s.action('server-save',{guildId:'../escape'})).status,400);
+ await s.action('preview',credentials);fs.writeFileSync(path.join(s.sessionDir,'out','preview.md'),'Reviewed');fs.writeFileSync(path.join(s.sessionDir,'out','plan.json'),JSON.stringify({approvalHash:'old-hash'}));
+ assert.equal((await s.action('server-select',{guildId:other})).status,409);s.calls[1].finish();await s.settled();assert.ok((await s.state()).preview);
+ assert.equal((await s.action('server-select',{guildId:other})).status,202);let value=await s.state();
+ assert.equal(value.guildId,other);assert.equal(value.inventory,null);assert.equal(value.preview,null);assert.equal(value.connected,false);assert.equal(value.hasCredentials,true);assert.equal(s.calls.length,2);
+ assert.equal((await s.action('server-select',{guildId:ID})).status,202);
+ await s.close();const restored=await createDesktopServer({root:path.dirname(s.sessionDir),credentialStore:{async load(){return {...credentials,guildId:other};}}});t.after(()=>restored.close());
+ const response=await fetch(`http://127.0.0.1:${restored.port}/api/state`,{headers:{'X-Cortex-Key':restored.key}});value=await response.json();
+ assert.equal(value.guildId,ID);assert.equal(value.connected,false);assert.equal(value.inventory,null);assert.deepEqual(value.serverProfiles[0],remembered);assert.ok(!JSON.stringify(value).includes(credentials.token));
+});
+
+test('removing the last bookmark stays removed after restart and does not forget the bot token',async t=>{
+ const vault={async load(){return {...credentials};}},s=await setup(t,{credentialStore:vault});
+ assert.equal((await s.action('server-remove',{guildId:ID})).status,202);assert.deepEqual((await s.state()).serverProfiles,[]);assert.equal(s.calls.length,0);
+ await s.close();const restored=await createDesktopServer({root:path.dirname(s.sessionDir),credentialStore:vault});t.after(()=>restored.close());
+ const response=await fetch(`http://127.0.0.1:${restored.port}/api/state`,{headers:{'X-Cortex-Key':restored.key}}),value=await response.json();
+ assert.deepEqual(value.serverProfiles,[]);assert.equal(value.guildId,'');assert.equal(value.hasCredentials,true);
+});
 
 test('blueprint storage validates and persists per guild without Discord writes, and invalidates approvals',async t=>{
  const s=await setup(t),read=()=>s.request('/api/design?guildId='+ID),save=body=>s.request('/api/design',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
@@ -328,6 +388,12 @@ test('real worker can review, confirm and save role and voice edits, then create
   await save({kind:'channel',action:'move',id:moveVoice.id,revision:moveVoice.revision,values:{target_id:moveCategory.id,placement:'inside'}});
   inv=await load();assert.equal(inv.channels.find(c=>c.id===voice.id).parent_id,moveCategory.id);
   const moveWrite=fs.readFileSync(requests,'utf8').trim().split('\n').map(JSON.parse).filter(r=>r.method!=='GET').at(-1);assert.deepEqual(moveWrite,{method:'PATCH',route:`/guilds/${ID}/channels`});
+  const batchRole=inv.roles.find(r=>r.id===role.id),batchChannel=inv.channels.find(c=>c.id===voice.id);
+  const batchRequests=[{kind:'role',action:'update',id:batchRole.id,revision:batchRole.revision,values:{name:'Batch role'},permissionChanges:{}},{kind:'channel',action:'update',id:batchChannel.id,revision:batchChannel.revision,values:{user_limit:12},overwriteChanges:[]}];
+  assert.equal((await s.action('batch-preview',{batchRequests})).status,202);const batch=await s.settled();assert.equal(batch.error,null);assert.equal(batch.batchPreview.count,2);
+  assert.equal((await s.action('batch-apply',{batchConfirmation:{guildId:ID,confirmed:true,approvalHash:batch.batchPreview.approvalHash}})).status,202);const batchResult=await s.settled();assert.equal(batchResult.error,null);assert.equal(batchResult.batchResult.success,true);assert.equal(batchResult.batchResult.completed.length,2);
+  assert.equal((await s.action('permission-simulate',{simulationRequest:{channelId:voice.id,memberId:'888888888888888888'}})).status,202);const simulation=await s.settled();assert.equal(simulation.error,null);assert.equal(simulation.simulation.memberId,'888888888888888888');assert.ok(simulation.simulation.results.length>0);
+
 
 });
 
