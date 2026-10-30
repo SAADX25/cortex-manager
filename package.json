@@ -14,5 +14,10 @@
     "desktop:demo": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File desktop/Launch.ps1 -Demo",
     "desktop:test": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File desktop/Test.ps1"
   },
-  "engines": {"node": ">=22.4"}
+  "engines": {
+    "node": ">=22.4"
+  },
+  "dependencies": {
+    "@napi-rs/canvas": "1.1.0"
+  }
 }

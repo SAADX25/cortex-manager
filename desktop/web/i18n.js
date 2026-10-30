@@ -433,6 +433,7 @@ const patterns = [
  [/^([٠-٩]{2}:[٠-٩]{2}) ([صم])$/u, (_,time,period)=>time.replace(/[٠-٩]/g,n=>String('٠١٢٣٤٥٦٧٨٩'.indexOf(n)))+(period==='ص'?' AM':' PM')],
  [/^(.*)المنشن التلقائي معطّل\.$/u, (_,prefix)=>`${prefix}Automatic mentions disabled.`],
 ];
+en['الترحيب والمغادرة']='Welcome & farewell';
 let language='ar', observer;
 const originals=new WeakMap(), attributes=new WeakMap();
 const skip='script,style,textarea,input,code,[translate="no"],.emoji,.entity-title strong,#sidebarGuildName,#emojiNamePreview,#editParent option,#overwriteRole option,.message-bubble,.discord-embed,.review-summary,.report-content,.message-confirm-preview';
@@ -469,16 +470,17 @@ function localize(){
 function apply(next){
   language=next;document.documentElement.lang=next;document.documentElement.dir=next==='ar'?'rtl':'ltr';
   document.title=next==='ar'?'Cortex Manager 6 | لوحة التحكم الحديثة':'Cortex Manager 6 | Dashboard';
-  const button=document.querySelector('#languageSwitch'),label=document.querySelector('#languageSwitchLabel');
-  label.textContent=next==='ar'?'English':'العربية';button.setAttribute('aria-label',next==='ar'?'Switch to English':'التبديل إلى العربية');button.title=button.getAttribute('aria-label');
+  document.querySelectorAll('#languageSwitch [data-language]').forEach(option=>{option.setAttribute('aria-pressed',String(option.dataset.language===next));});
   localize();window.dispatchEvent(new CustomEvent('cortex-language-changed',{detail:next}));
 }
 window.CortexI18n={get language(){return language;},translate,refresh:localize};
 const button=document.querySelector('#languageSwitch');
+let pending=true;
+function setPending(value){pending=value;button.setAttribute('aria-busy',String(value));button.querySelectorAll('[data-language]').forEach(option=>{option.disabled=value;});}
 const fragment=location.hash.slice(1),key=fragment.startsWith('key=')?new URLSearchParams(fragment).get('key'):decodeURIComponent(fragment);
 async function preference(method='GET',value){const response=await fetch('/api/preferences',{method,cache:'no-store',headers:{'X-Cortex-Key':key,...(value?{'Content-Type':'application/json'}:{})},...(value?{body:JSON.stringify({language:value})}:{})});if(!response.ok)throw new Error('Language preference could not be saved.');return response.json();}
 observer=new MutationObserver(localize);
 apply('ar');
-preference().then(p=>{if(['ar','en'].includes(p.language))apply(p.language);}).catch(()=>{}).finally(()=>{button.disabled=false;});
-button.onclick=async()=>{const previous=language;button.disabled=true;apply(language==='ar'?'en':'ar');try{await preference('POST',language);}catch{apply(previous);window.dispatchEvent(new CustomEvent('cortex-language-error'));}finally{button.disabled=false;}};
+preference().then(p=>{if(['ar','en'].includes(p.language))apply(p.language);}).catch(()=>{}).finally(()=>setPending(false));
+button.onclick=async event=>{const option=event.target.closest('[data-language]'),next=option?.dataset.language;if(pending||!['ar','en'].includes(next)||next===language)return;const previous=language;setPending(true);apply(next);try{await preference('POST',language);}catch{apply(previous);window.dispatchEvent(new CustomEvent('cortex-language-error'));}finally{setPending(false);}};
 })();

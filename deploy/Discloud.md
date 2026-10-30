@@ -14,7 +14,7 @@
 6. شغّل التطبيق في Discloud، وراجع Logs: gateway online، ثم baseline لكل مصدر. الفحص كل دقيقتين تقريبًا، مع إبطاء عند الأخطاء وحدود الطلبات. أول فحص ناجح يتجاهل المحتوى القديم والبث الجاري، ثم يرسل الأحداث الجديدة فقط.
 7. تغيير الإعدادات في لوحة ويندوز يتطلب تنزيل ZIP محدث وإعادة رفعه/تحديث ملف config/social-feeds.json في الاستضافة ثم إعادة التشغيل. لا يوجد اتصال تحكم عن بعد أو مزامنة سرية بين الجهاز والاستضافة.
 
-يوتيوب: أدخل Channel ID يبدأ بـ UC أو رابط /channel/UC…؛ يدعم الفيديوهات وShorts عبر RSS الرسمي. بدء البث المباشر على يوتيوب ليس مضمونًا عبر RSS. Kick: تنبيه بدء بث جديد؛ المقاطع تُنشر يدويًا. إنستغرام: منشورات/Reels عبر RSS.app لحساب عام أو API لحساب مهني مصرح؛ ليس تنبيهات البث/Stories.
+يوتيوب: أدخل رابط قناة YouTube بصيغة /@handle أو اسم @handle أو Channel ID يبدأ بـ UC أو رابط /channel/UC…؛ تُحوّل لوحة ويندوز اسم القناة إلى معرّف ثابت قبل الحفظ؛ يدعم الفيديوهات وShorts عبر RSS الرسمي. بدء البث المباشر على يوتيوب ليس مضمونًا عبر RSS. Kick: تنبيه بدء بث جديد؛ المقاطع تُنشر يدويًا. إنستغرام: منشورات/Reels عبر RSS.app لحساب عام أو API لحساب مهني مصرح؛ ليس تنبيهات البث/Stories.
 
 احفظ مجلد data بين عمليات إعادة التشغيل والتحديث/النقل. يحتوي سجل منع التكرار وآخر محاولة إرسال؛ حذفه يبدأ baseline جديدًا ويؤدي لتجاهل الأحداث الحالية. الحالة unknown تعني عدم إعادة المحاولة تلقائيًا: افحص الغرفة أولًا قبل النشر اليدوي. بعد انقطاع طويل تُنشر أحدث خمسة أحداث جديدة كحد أقصى لكل مصدر، ويُتجاوز الأقدم. المعرفات والسجل محليان للنسخة؛ لا ينسقان نسختين متزامنتين.
 
@@ -32,7 +32,7 @@ This is a standalone background bot, not the Windows control panel. Upload the e
 
 Configure sources and text destinations in the desktop Social section; save with explicit automatic-posting consent, then export. Desktop edits are local: upload a fresh configuration and restart the hosted bot to apply them. Manual posts use the existing desktop preview and confirmation flow and require the desktop connection.
 
-- YouTube: official channel RSS, UC channel ID required. New videos/Shorts; live-start detection is not guaranteed.
+- YouTube: official channel RSS; the desktop accepts /@handle URLs, @handles or UC channel IDs and resolves handles before saving. New videos/Shorts; live-start detection is not guaranteed.
 - Kick: official API live-start notifications; requires KICK_CLIENT_ID and KICK_CLIENT_SECRET from your Kick developer application. Clips can be posted manually.
 - Instagram: public account posts/Reels through a configured rssURL from RSS.app (no Meta credentials), or an authorized Business/Creator account using INSTAGRAM_USER_ID and INSTAGRAM_ACCESS_TOKEN with instagram_business_basic. Posts/Reels only, not arbitrary personal accounts, Stories or live streams. Refresh expiring credentials at the host.
 
@@ -55,3 +55,35 @@ Official references:
 Use the direct https://rss.app/feeds/FEED_ID.xml URL, not an rssviewer.app page. Configure it using the RSS button beside the Instagram source, then export and update the existing hosted app. The feed must identify the configured Instagram account. RSS.app is an external service: check its trial/subscription and refresh limits; delivery timing depends on its updates. Existing items establish a silent baseline; only later items are posted. Automatic notifications contain text and the original post link. Keep data/social-deliveries.json and existing environment variables when updating.
 
 لربط حساب عام، افتح زر RSS بجانب مصدر Instagram وأدخل رابط XML المباشر، ثم صدّر الحزمة وحدّث التطبيق المستضاف الحالي. تعتمد سرعة التنبيهات على تحديث RSS.app واستمرار خطته أو اشتراكه؛ لا تتجاوز هذه الميزة انتهاء التجربة. أول فحص يسجّل الموجود دون نشره. احتفظ بمجلد data ومتغيرات البيئة عند التحديث.
+
+### Shutdown diagnostics
+
+The exported discloud.config starts Node directly (START=node --env-file-if-exists=.env src/hosted-bot.mjs); npm start remains available for local use. A host SIGINT/SIGTERM logs lifecycle stopping/stopped with its exitCode. Exit code 0 means that requested shutdown completed; it does not prove who sent the signal. Fatal Gateway failures keep exit code 1. If Commit retains the existing start command, review START in the hosting settings to apply the exported command. A dashboard crash label alone cannot identify a code defect: inspect the preceding runtime logs, exit code and memory metrics.
+
+## Welcome and farewell / الترحيب والمغادرة
+
+Open Welcome & farewell in the Windows app, select a text channel for each event, edit its title/message/color and review the local card. {user} inserts the member name and {server} the server name. Use the preset button for Arabic/English text. Confirm saving automatic messages, export the package and update the existing Discloud app. Unsaved edits are not exported. No additional environment variable is needed. Enable Server Members Intent under Developer Portal → your Discord application → Bot before deploying enabled welcome settings. The hosted Gateway requests GUILDS + GUILD_MEMBERS only when at least one welcome/farewell rule is enabled; desktop presence keeps zero intents. If Discord closes with 4014, check that privileged intent.
+
+Requires View Channel, Send Messages and Embed Links in the selected rooms. Actual messages include the available Discord member avatar. No live test is sent by the preview. Only future GUILD_MEMBER_ADD/REMOVE events trigger delivery; startup member lists are ignored, bot accounts are skipped when identified, and farewell does not claim whether someone left voluntarily, was kicked or banned. Dedupe reserves events before sending; uncertain deliveries are not retried. Keep data/welcome-deliveries.json across updates. Run only one instance with welcome enabled. Existing social notifications remain independent.
+
+من قسم «الترحيب والمغادرة» اختر الغرف وخصّص العنوان والنص واللون. {user} لاسم العضو و{server} لاسم السيرفر. المعاينة محلية ولا ترسل شيئًا. بعد الموافقة والحفظ نزّل الحزمة وحدّث تطبيق Discloud الحالي. قبل التفعيل افتح Discord Developer Portal ثم تطبيق البوت ثم Bot وفعّل Server Members Intent. لا تحتاج متغيرات بيئة جديدة أو Administrator؛ يلزم عرض الغرفة وإرسال الرسائل وتضمين الروابط Embed Links. الرسائل الفعلية تعرض صورة العضو إذا توفرت. يُسجل الخروج برسالة محايدة دون تحديد سبب المغادرة. احتفظ بملف data/welcome-deliveries.json ولا تشغّل نسختين مفعّلتين للترحيب.
+
+Reference: https://docs.discord.com/developers/events/gateway#privileged-intents
+
+Welcome editor: each card has its own Arabic/English template selector; replacing custom text requires confirmation. Refresh channels reloads the selected server without discarding the message draft. Destinations include text/announcement channels and the text chat within voice channels (Connect is additionally required for voice). No voice audio is played.
+
+### Custom background cards
+
+Welcome/farewell can use a PNG card rendered on the bot with a per-server uploaded background, title/text colors and adjustable dark overlay. Choose the image design, preview the final image, then save and export. The package bundles the normalized background, OFL Arabic/emoji fonts and the pinned @napi-rs/canvas dependency; npm install on Discloud installs its Linux binary (do not upload Windows node_modules). Actual cards include the member avatar when the official Discord CDN returns a bounded PNG; otherwise initials are used. Requires Attach Files and Embed Links. Long titles/descriptions are shortened to fit the card; the attachment description includes the message for accessibility. If rendering or attachment permission fails, the bot reports a safe warning and sends the regular embed. Fonts/licenses are under assets/welcome. Preview sends no Discord messages. Native renderer memory varies by host; monitor actual usage after enabling.
+
+البطاقة المصوّرة تستخدم الخلفية المرفقة مع لون مستقل للعنوان والنص وتعتيم قابل للتعديل. اختر نمط الصورة ثم «معاينة الصورة النهائية»، واحفظ قبل تصدير الحزمة. يتضمن التصدير الصورة والخطوط والتراخيص واعتماد الرسم؛ الاستضافة تثبّت نسخة Linux تلقائيًا. لا ترفع node_modules من ويندوز. يلزم Attach Files وEmbed Links. النص الطويل يختصر ليناسب الصورة، وإذا تعذر الرسم يظهر تحذير ويُرسل التصميم العادي.
+
+### Per-server image library and portable names
+
+The welcome editor accepts PNG/JPEG/WebP/GIF uploads up to 8MB and 16 megapixels; animated files use their decoded still frame. Images are normalized to a 1200x510 JPEG and stored in the local per-server library under out/desktop-modern/welcome-images. Duplicate uploads reuse the same image. Only selected images are exported, under assets/welcome/backgrounds; unused history is kept locally. Delete requires confirmation and is blocked while saved settings use that image. The old fixed background is no longer bundled. A solid background is available without any image. Back up your local library if moving the desktop app to another PC.
+
+Arabic, Latin and emoji fonts are bundled with OFL licenses. Names with mathematical/stylized alphabet characters are normalized to equivalent readable letters inside the PNG (NFKC); Discord names themselves are not changed. Rebuild the hosted app after uploading the new package to install dependencies, then test a future member event.
+
+### Readable Discord image layout
+
+Image welcome/farewell cards use a compact 1000x440 canvas with larger title/body text and vertical placement based on the wrapped lines. They are sent as direct PNG attachments, without an additional image Embed wrapper; the regular Embed remains only a fallback. This removes the extra colored outer strip while keeping the user-selected border within the image. Existing posted messages are not edited.

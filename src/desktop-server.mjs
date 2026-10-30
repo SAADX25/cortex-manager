@@ -1,3 +1,8 @@
+import {createWelcomeAssetStore,assetId} from './welcome-assets.mjs';
+import {renderWelcomeCard} from './welcome-card.mjs';
+import {validateWelcome,welcomeDefaults} from './welcome-config.mjs';
+import {createWelcomeStore} from './welcome-config.mjs';
+import {createYouTubeSourceResolver} from './youtube-source.mjs';
 import {createWorkspaceStore} from './workspace-store.mjs';
 import {createSocialStore,manualSocialMessage,validateSocial} from './social-config.mjs';
 import {hostedPackage} from './social-package.mjs';
@@ -30,7 +35,7 @@ import {prepareMessage,messagePreview} from './messages.mjs';
 const ROOT=fileURLToPath(new URL('../',import.meta.url));
 const ACTIONS=new Set(['batch-preview','batch-apply','permission-simulate','role-grant-preview','role-grant-apply','message-preview','message-send','server-save','server-select','server-remove','credentials-save','credentials-forget','connect','check','inventory','online','stop','preview','rebuild','edit-preview','edit-apply','shutdown','client-closed']);
 const REPORTS=new Set(['batch-plan.json','batch-snapshot.json','batch-preview.txt','batch-result.json','design.json','role-grant-plan.json','role-grant-preview.txt','role-grant-result.json','preview.md','plan.json','approval.json','snapshot.json','result.json','execution-log.txt','failure.json','edit-preview.txt','edit-plan.json','edit-snapshot.json','edit-result.json','edit-conflict.json','message-plan.json','message-preview.txt','message-result.json']);
-const STATIC=new Map([['/','index.html'],['/index.html','index.html'],['/app.js','app.js'],['/i18n.js','i18n.js'],['/designer.js','designer.js'],['/arrange.js','arrange.js'],['/workspace-drafts.js','workspace-drafts.js'],['/workbench-ui.js','workbench-ui.js'],['/social-ui.js','social-ui.js'],['/styles.css','styles.css'],['/favicon.svg','favicon.svg']]);
+const STATIC=new Map([['/','index.html'],['/index.html','index.html'],['/app.js','app.js'],['/i18n.js','i18n.js'],['/designer.js','designer.js'],['/arrange.js','arrange.js'],['/workspace-drafts.js','workspace-drafts.js'],['/workbench-ui.js','workbench-ui.js'],['/welcome-ui.js','welcome-ui.js'],['/social-ui.js','social-ui.js'],['/styles.css','styles.css'],['/favicon.svg','favicon.svg']]);
 const TYPES={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml; charset=utf-8','.json':'application/json; charset=utf-8','.md':'text/plain; charset=utf-8','.txt':'text/plain; charset=utf-8'};
 const MAX_BODY=256*1024;
 
@@ -80,7 +85,7 @@ export function spawnDesktopWorker(mode,config,{cwd,root=ROOT,onOutput,onError})
   }};
 }
 
-export async function createDesktopServer({root=ROOT,sessionDir,runWorker=spawnDesktopWorker,demo=false,credentialStore,idleTimeoutMs=300000,startupTimeoutMs=120000,port=0}={}) {
+export async function createDesktopServer({root=ROOT,sessionDir,runWorker=spawnDesktopWorker,demo=false,credentialStore,idleTimeoutMs=300000,startupTimeoutMs=120000,port=0,socialFetch=fetch}={}) {
   root=path.resolve(root);
   const preferencesFile=path.join(root,'out','desktop-modern',demo?'demo-preferences.json':'preferences.json');
   let uiLanguage='ar';try{const p=JSON.parse(fs.readFileSync(preferencesFile,'utf8'));if(p.language==='en')uiLanguage='en';}catch{}
@@ -90,6 +95,9 @@ export async function createDesktopServer({root=ROOT,sessionDir,runWorker=spawnD
   let credentials={token:'',guildId:''},job=null,presenceWorker=null,presenceStopping=null,closed=false,lastSeen=0,activeOperation=null,clientClosedTimer=null;
   const workspaceStore=createWorkspaceStore({root,demo});
   const socialStore=createSocialStore({root,demo});
+  const welcomeStore=createWelcomeStore({root,demo});
+  const welcomeAssets=createWelcomeAssetStore({root,demo});
+  const resolveYouTubeSources=createYouTubeSourceResolver({fetchImpl:socialFetch});
   const socialLinks=createSocialLinkReader({root,demo,socialStore});
   const resolveInstagramThumbnail=createInstagramThumbnailResolver();
   const vault=credentialStore??createCredentialStore({root});let credentialsSaved=false,credentialLoadError=null;
@@ -268,7 +276,33 @@ export async function createDesktopServer({root=ROOT,sessionDir,runWorker=spawnD
         if(url.pathname==='/api/social/package'&&req.method==='GET'){
           if(demo)return send(403,{error:'Deployment export is unavailable in demo mode.'});
           res.setHeader('Content-Disposition','attachment; filename="Cortex-Social-Discloud.zip"');
-          return send(200,hostedPackage(root,socialStore.read().config),'application/zip');
+          return send(200,hostedPackage(root,socialStore.read().config,welcomeStore.read().config),'application/zip');
+        }
+        if(url.pathname==='/api/welcome/assets'){
+          const guildId=url.searchParams.get('guildId');
+          if(req.method==='GET')return send(200,{assets:welcomeAssets.list(guildId)});
+          if(!['POST','DELETE'].includes(req.method))return send(405,{error:'Method not allowed.'});
+          if(!/^application\/json(?:;|$)/i.test(String(req.headers['content-type']??'')))return send(415,{error:'JSON required.'});
+          let size=0;const parts=[];for await(const part of req){size+=part.length;if(size>12*1024*1024){send(413,{error:'Image exceeds 8MB.'});req.resume();return;}parts.push(part);}
+          let body;try{body=JSON.parse(Buffer.concat(parts).toString('utf8'));}catch{return send(400,{error:'Invalid JSON.'});}
+          if(!body||body.guildId!==guildId||Object.keys(body).some(k=>!(req.method==='POST'?['guildId','name','data']:['guildId','id']).includes(k)))return send(400,{error:'Invalid image request.'});
+          if(req.method==='DELETE')return send(200,{assets:welcomeAssets.remove(body,welcomeStore.read().config)});
+          const asset=await welcomeAssets.add(body);return send(200,{asset,assets:welcomeAssets.list(guildId)});
+        }
+        if(['/api/welcome','/api/welcome/preview'].includes(url.pathname)){
+          if(req.method==='GET'&&url.pathname==='/api/welcome')return send(200,welcomeStore.read());
+          if(req.method!=='POST')return send(405,{error:'Method not allowed.'});
+          if(!/^application\/json(?:;|$)/i.test(String(req.headers['content-type']??'')))return send(415,{error:'JSON required.'});
+          let size=0;const parts=[];for await(const part of req){size+=part.length;if(size>128000){send(413,{error:'Welcome settings too large.'});req.resume();return;}parts.push(part);}
+          let body;try{body=JSON.parse(Buffer.concat(parts).toString('utf8'));}catch{return send(400,{error:'Invalid JSON.'});}
+          if(url.pathname==='/api/welcome/preview'){
+            if(!body||Object.keys(body).some(k=>!['settings','server','language','guildId'].includes(k))||typeof body.server!=='string'||body.server.length>100||!['ar','en'].includes(body.language))return send(400,{error:'Invalid card preview.'});
+            const candidate=welcomeDefaults('111111111111111111');candidate.join={...body.settings,enabled:false};validateWelcome({version:1,guilds:[candidate]});
+            const background=assetId(candidate.join.card?.background)?welcomeAssets.bytes(candidate.join.card.background,body.guildId):undefined;
+            const bytes=await renderWelcomeCard(candidate.join,{user:body.language==='ar'?'عضو جديد':'New member',server:body.server},{background});return send(200,{type:'image/png',data:bytes.toString('base64')});
+          }
+          for(const g of body?.config?.guilds??[])for(const type of ['join','leave']){const id=g[type]?.card?.background;if(assetId(id))welcomeAssets.bytes(id,g.guildId);}
+          return send(200,welcomeStore.save(body));
         }
         if(url.pathname==='/api/social/links'&&req.method==='GET')return send(200,socialLinks.read());
         if(['/api/social','/api/social/manual','/api/social/validate'].includes(url.pathname)){
@@ -284,7 +318,7 @@ export async function createDesktopServer({root=ROOT,sessionDir,runWorker=spawnD
             if(thumbnail.image)request.image=thumbnail.image;
             return send(200,{request,thumbnail:{status:thumbnail.status,...(thumbnail.reason?{reason:thumbnail.reason}:{})}});
           }
-          if(url.pathname==='/api/social/validate')return send(200,{config:validateSocial(body)});
+          if(url.pathname==='/api/social/validate')return send(200,{config:await resolveYouTubeSources(body,{allowNetwork:!demo})});
           return send(200,socialStore.save(body));
         }
         if(url.pathname==='/api/workspace'){

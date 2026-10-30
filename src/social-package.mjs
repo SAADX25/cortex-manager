@@ -1,9 +1,11 @@
+import {createWelcomeAssetStore,assetId} from './welcome-assets.mjs';
+import {validateWelcome,emptyWelcome} from './welcome-config.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import {validateSocial} from './social-config.mjs';
 
 // Explicit allowlist: no vault, .env, out, desktop bridge, .git or rebuild entry point.
-export const HOSTED_FILES=['src/hosted-bot.mjs','src/social-config.mjs','src/instagram-rss.mjs','src/social-providers.mjs','src/social-engine.mjs','src/api.mjs','src/gateway.mjs','src/messages.mjs','src/message-image.mjs','src/permissions.mjs','src/safety.mjs','deploy/Discloud.md','deploy/ENVIRONMENT.example'];
+export const HOSTED_FILES=['src/welcome-card.mjs','src/welcome-card-style.mjs','assets/welcome/NotoSans.ttf','assets/welcome/OFL-Latin.txt','assets/welcome/NotoSansArabic.ttf','assets/welcome/OFL-Arabic.txt','assets/welcome/NotoEmoji.ttf','assets/welcome/OFL-Emoji.txt','src/welcome-config.mjs','src/welcome-engine.mjs','src/hosted-bot.mjs','src/social-config.mjs','src/instagram-rss.mjs','src/social-providers.mjs','src/social-engine.mjs','src/api.mjs','src/gateway.mjs','src/messages.mjs','src/message-image.mjs','src/permissions.mjs','src/safety.mjs','deploy/Discloud.md','deploy/ENVIRONMENT.example'];
 const crc32=data=>{let n=0xffffffff;for(const byte of data){n^=byte;for(let i=0;i<8;i++)n=(n>>>1)^((n&1)?0xedb88320:0);}return (n^0xffffffff)>>>0;};
 export function zipStored(files){
   const blocks=[],central=[];let offset=0;
@@ -16,9 +18,12 @@ export function zipStored(files){
   const directory=Buffer.concat(central),end=Buffer.alloc(22);end.writeUInt32LE(0x06054b50);end.writeUInt16LE(Object.keys(files).length,8);end.writeUInt16LE(Object.keys(files).length,10);end.writeUInt32LE(directory.length,12);end.writeUInt32LE(offset,16);
   return Buffer.concat([...blocks,directory,end]);
 }
-export function hostedPackage(root,config){
+export function hostedPackage(root,config,welcome=emptyWelcome()){
   config=validateSocial(config);const files=Object.fromEntries(HOSTED_FILES.map(name=>[name,fs.readFileSync(path.join(root,name))]));
-  files['package.json']=JSON.stringify({name:'cortex-social-bot',version:'1.0.0',private:true,type:'module',engines:{node:'>=22.9'},scripts:{start:'node --env-file-if-exists=.env src/hosted-bot.mjs'}},null,2);
-  files['discloud.config']='NAME=Cortex Social Bot\nTYPE=bot\nMAIN=src/hosted-bot.mjs\nRAM=100\nVERSION=latest\nSTART=npm start\n';
+  files['package.json']=JSON.stringify({name:'cortex-social-bot',version:'1.0.0',private:true,type:'module',engines:{node:'>=22.9'},dependencies:{'@napi-rs/canvas':'1.1.0'},scripts:{start:'node --env-file-if-exists=.env src/hosted-bot.mjs'}},null,2);
+  files['discloud.config']='NAME=Cortex Social Bot\nTYPE=bot\nMAIN=src/hosted-bot.mjs\nRAM=100\nVERSION=latest\nSTART=node --env-file-if-exists=.env src/hosted-bot.mjs\n';
+  welcome=validateWelcome(welcome);const library=createWelcomeAssetStore({root});
+  for(const guild of welcome.guilds)for(const type of ['join','leave']){const id=guild[type].card?.background;if(assetId(id))files['assets/welcome/backgrounds/'+id+'.jpg']=library.bytes(id,guild.guildId);}
+  files['config/welcome.json']=JSON.stringify(welcome,null,2);
   files['config/social-feeds.json']=JSON.stringify(config,null,2);return zipStored(files);
 }

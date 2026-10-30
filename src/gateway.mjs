@@ -11,8 +11,8 @@ const fatalCodes=new Set([4004,4010,4011,4012,4013,4014]);
 // Presence-only connection: no message/member intents, no moderation commands,
 // and no dependency on the rebuild process staying active.
 export class GatewaySession extends EventEmitter {
-  constructor(token,{api=new DiscordAPI(token),Socket=WebSocket,random=Math.random,now=Date.now,timers={setTimeout,clearTimeout}}={}) {
-    super();this.token=token;this.api=api;this.Socket=Socket;this.random=random;this.now=now;this.timers=timers;
+  constructor(token,{api=new DiscordAPI(token),Socket=WebSocket,random=Math.random,now=Date.now,timers={setTimeout,clearTimeout},intents=0}={}) {
+    super();if(![0,3].includes(intents))throw new Error('Unsupported Gateway intents.');this.intents=intents;this.token=token;this.api=api;this.Socket=Socket;this.random=random;this.now=now;this.timers=timers;
     this.running=false;this.socket=null;this.session=null;this.sequence=null;this.resumeURL=null;
     this.retryTimer=null;this.heartbeatTimer=null;this.handshakeTimer=null;this.attempts=0;this.nextIdentifyAt=0;
   }
@@ -85,6 +85,7 @@ export class GatewaySession extends EventEmitter {
   }
   receive(packet) {
     if(packet.s!==null&&packet.s!==undefined)this.sequence=packet.s;
+    if(packet.op===0&&this.intents===3&&this.session&&['GUILD_MEMBER_ADD','GUILD_MEMBER_REMOVE'].includes(packet.t))this.emit('member-event',{type:packet.t,guildId:packet.d?.guild_id,user:packet.d?.user,session:this.session,sequence:packet.s});
     if(packet.op===10) {
       const interval=packet.d?.heartbeat_interval;
       if(!Number.isFinite(interval)||interval<1000)throw new Error('Invalid heartbeat interval');
@@ -94,7 +95,7 @@ export class GatewaySession extends EventEmitter {
       if(this.session) this.send(6,{token:this.token,session_id:this.session,seq:this.sequence});
       else {
         this.nextIdentifyAt=this.now()+5500;
-        this.send(2,{token:this.token,intents:0,properties:{os:'windows',browser:'CortexManagerDesktop',device:'CortexManagerDesktop'},
+        this.send(2,{token:this.token,intents:this.intents,properties:{os:'windows',browser:'CortexManagerDesktop',device:'CortexManagerDesktop'},
           presence:{since:null,activities:[{name:'Cortex Manager',type:0}],status:'online',afk:false}});
       }
       this.handshakeTimer=this.timers.setTimeout(()=>this.reconnect(5000),30000);

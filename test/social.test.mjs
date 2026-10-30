@@ -9,7 +9,7 @@ import {validateSocial,sourceId,mediaURL,manualSocialMessage,createSocialStore} 
 import {youtubeItems,createSocialProviders,boundedFetch,ProviderError} from '../src/social-providers.mjs';
 import {createSocialEngine} from '../src/social-engine.mjs';
 import {hostedPackage,HOSTED_FILES} from '../src/social-package.mjs';
-import {startHostedBot,hostedStartupDiagnostic} from '../src/hosted-bot.mjs';
+import {startHostedBot,hostedStartupDiagnostic,installHostedShutdown} from '../src/hosted-bot.mjs';
 import {P} from '../src/permissions.mjs';
 import {instagramRSSURL,instagramRSSItems} from '../src/instagram-rss.mjs';
 import {sample,fakeServer,ID,BOT_ROLE} from './helpers/fake.mjs';
@@ -106,8 +106,8 @@ test('provider errors back off and isolate destinations; concurrent ticks do not
 test('package contains only allowlisted source, nonsecret configuration and root startup files',()=>{
  const zip=hostedPackage(root,config()),names=[],contents=new Map();let offset=0;
  while(zip.readUInt32LE(offset)===0x04034b50){const length=zip.readUInt32LE(offset+18),n=zip.readUInt16LE(offset+26),extra=zip.readUInt16LE(offset+28),name=zip.subarray(offset+30,offset+30+n).toString(),start=offset+30+n+extra;names.push(name);contents.set(name,zip.subarray(start,start+length).toString());offset=start+length;}
- const metadata=JSON.parse(contents.get('package.json'));assert.equal(metadata.scripts.start,'node --env-file-if-exists=.env src/hosted-bot.mjs');assert.equal(metadata.engines.node,'>=22.9');assert.match(contents.get('discloud.config'),/START=npm start/);assert.deepEqual(JSON.parse(contents.get('config/social-feeds.json')),config());
- assert.deepEqual(names.sort(),[...HOSTED_FILES,'package.json','discloud.config','config/social-feeds.json'].sort());assert.ok(names.every(n=>!/(^|\/)(\.env|out|desktop|\.git|data)(\/|$)/.test(n)));
+ const metadata=JSON.parse(contents.get('package.json'));assert.equal(metadata.scripts.start,'node --env-file-if-exists=.env src/hosted-bot.mjs');assert.equal(metadata.engines.node,'>=22.9');assert.match(contents.get('discloud.config'),/START=node --env-file-if-exists=\.env src\/hosted-bot\.mjs/);assert.deepEqual(JSON.parse(contents.get('config/social-feeds.json')),config());
+ assert.deepEqual(names.sort(),[...HOSTED_FILES,'package.json','discloud.config','config/social-feeds.json','config/welcome.json'].sort());assert.ok(names.every(n=>!/(^|\/)(\.env|out|desktop|\.git|data)(\/|$)/.test(n)));
  for(const name of names.filter(n=>n.endsWith('.mjs'))){const text=fs.readFileSync(path.join(root,name),'utf8');for(const [,dependency]of text.matchAll(/from '(\.\/[^']+)'/g))assert.ok(names.includes(path.posix.normalize(path.posix.join(path.posix.dirname(name),dependency))),`${name} depends on missing ${dependency}`);}
 });
 test('hosted lifecycle starts independently of stdin and stops without mutations or secret logging',async t=>{
@@ -139,4 +139,20 @@ test('Instagram RSS fetch uses no Meta credentials and no redirects',async()=>{
 });
 test('changing Instagram RSS establishes a fresh baseline without replaying posts',async t=>{
  const h=harness(t),engine=h.make(),f=feed({platform:'instagram',source:'creator'});await engine.tick(config([f]));h.advance();h.newItem('new-before-rss');await engine.tick(config([{...f,rssURL}]));assert.equal(h.server.calls.length,0);assert.equal(h.statuses.at(-1).status,'baseline');h.advance();h.newItem('new-after-rss');await engine.tick(config([{...f,rssURL}]));assert.equal(h.server.calls.length,1);
+});
+
+test('all three notification platforms baseline and deliver independently to their configured destination',async t=>{
+ const h=harness(t);let fresh=false;const urls={instagram:'https://instagram.com/p/newpost/',kick:'https://kick.com/creator',youtube:'https://youtube.com/watch?v=abcdefghijk'};
+ const feeds=['instagram','kick','youtube'].map(platform=>feed({id:platform,platform,source:platform==='youtube'?channel:'creator',...(platform==='instagram'?{rssURL}:{})}));
+ const engine=createSocialEngine({api:h.api,stateFile:h.stateFile,now:()=>fresh?Date.parse('2026-10-30T10:03:00Z'):Date.parse('2026-10-30T10:00:00Z'),fetchItems:async f=>fresh?[{id:f.platform+'-new',title:f.platform,url:urls[f.platform],published:'2026-10-30T10:02:59Z'}]:[]});
+ await engine.tick(config(feeds));assert.equal(h.server.calls.length,0);fresh=true;await engine.tick(config(feeds));assert.equal(h.server.calls.length,3);for(const f of feeds){const call=h.server.calls.find(c=>c.body.content.includes('· '+f.platform));assert.ok(call);assert.equal(call.path,'/channels/'+channelId+'/messages');assert.deepEqual(call.body.allowed_mentions.parse,[]);}
+ await engine.tick(config(feeds));assert.equal(h.server.calls.length,3);
+});
+
+test('host signals stop once, exit cleanly and distinguish fatal failures without leaking error details',async()=>{
+ const runtime=new EventEmitter(),logs=[];let stops=0,release;
+ const lifecycle=installHostedShutdown({failed:false,stop(){stops++;return new Promise(resolve=>release=resolve);}},{runtime,log:e=>logs.push(e)});
+ runtime.emit('SIGTERM');await Promise.resolve();const pending=lifecycle.request('SIGINT');assert.equal(stops,1);release();await pending;assert.equal(runtime.exitCode,0);assert.deepEqual(logs.map(e=>e.status),['stopping','stopped']);assert.equal(logs[1].signal,'SIGTERM');lifecycle.dispose();assert.equal(runtime.listenerCount('SIGINT'),0);
+ const fatal=installHostedShutdown({failed:true,async stop(){}},{runtime,log:e=>logs.push(e)});await fatal.request('SIGTERM');assert.equal(runtime.exitCode,1);fatal.dispose();
+ const failed=installHostedShutdown({failed:false,async stop(){throw new Error('SECRET never log');}},{runtime,log:e=>logs.push(e)});await failed.request('SIGTERM');assert.equal(runtime.exitCode,1);assert.equal(logs.at(-1).code,'SHUTDOWN_FAILED');assert.ok(!JSON.stringify(logs).includes('SECRET'));failed.dispose();
 });

@@ -38,7 +38,7 @@ export class DiscordAPI {
     throw new Error(`Discord API exhausted rate-limit retries for ${method} ${path}`);
   }
   get(p){return this.call('GET',p);}
-  post(p,b){return this.call('POST',p,b);}
+  post(p,b,options){return this.call('POST',p,b,options);}
   patch(p,b){return this.call('PATCH',p,b);}
   del(p){return this.call('DELETE',p);}
 }
