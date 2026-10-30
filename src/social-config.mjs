@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {randomBytes,createHash} from 'node:crypto';
 import {validateMessageImage} from './message-image.mjs';
+import {instagramRSSURL} from './instagram-rss.mjs';
 
 export const snowflake=v=>typeof v==='string'&&/^\d{16,22}$/.test(v);
 const fail=message=>{throw new Error(message);};
@@ -41,9 +42,10 @@ export function validateSocial(config){
   keys(config,['version','feeds']);if(config.version!==1||!Array.isArray(config.feeds)||config.feeds.length>40)fail('At most 40 social sources are supported.');
   const ids=new Set(),destinations=new Set();
   const feeds=config.feeds.map(f=>{
-    keys(f,['id','guildId','channelId','platform','source','enabled','language']);
+    keys(f,['id','guildId','channelId','platform','source','enabled','language','rssURL']);
     if(typeof f.id!=='string'||!/^[a-zA-Z0-9_-]{1,64}$/.test(f.id)||ids.has(f.id)||!snowflake(f.guildId)||!snowflake(f.channelId)||typeof f.enabled!=='boolean'||!['ar','en'].includes(f.language))fail('Invalid social source settings.');
     const source=sourceId(f.platform,f.source),key=[f.guildId,f.channelId,f.platform,source].join(':');if(destinations.has(key))fail('This source already targets this room.');
+    if(f.rssURL!==undefined){if(f.platform!=='instagram')fail('RSS feeds are supported for Instagram only.');f={...f,rssURL:instagramRSSURL(f.rssURL)};}
     ids.add(f.id);destinations.add(key);return {...f,source};
   });return {version:1,feeds};
 }

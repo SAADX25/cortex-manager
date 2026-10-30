@@ -27,7 +27,7 @@ export function createSocialEngine({api,fetchItems,stateFile,now=Date.now,onStat
       for(const [id,entry]of Object.entries(state.sources))if(!active.has(id)&&entry.active){entry.active=false;persist();}
       for(const feed of config.feeds.filter(f=>f.enabled)){
         if(isStopping())return false;
-        const signature=hash([feed.guildId,feed.channelId,feed.platform,feed.source]);
+        const signature=hash([feed.guildId,feed.channelId,feed.platform,feed.source,...(feed.rssURL?[feed.rssURL]:[])]);
         if((initialRetries.get(signature)??0)>now())continue;
         let entry=state.sources[feed.id];
         if(entry?.signature!==signature||entry?.active===false)entry=null;

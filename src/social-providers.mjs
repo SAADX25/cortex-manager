@@ -1,4 +1,5 @@
 import {sourceId,mediaURL} from './social-config.mjs';
+import {instagramRSSURL,instagramRSSItems} from './instagram-rss.mjs';
 
 export class ProviderError extends Error {constructor(message,retryMs=300000){super(message);this.retryMs=retryMs;}}
 // Fixed official endpoints only. Never follow a redirect with an API credential.
@@ -28,6 +29,7 @@ export function createSocialProviders({env=process.env,fetchImpl=fetch,now=Date.
   const get=async(url,headers={})=>{try{return JSON.parse(await boundedFetch(url,{headers,fetchImpl}));}catch(e){if(e instanceof ProviderError)throw e;throw new ProviderError('Invalid provider JSON.');}};
   return async function fetchItems(feed){
     const source=sourceId(feed.platform,feed.source);
+    if(feed.platform==='instagram'&&feed.rssURL)return instagramRSSItems(await boundedFetch(instagramRSSURL(feed.rssURL),{fetchImpl}),source);
     if(feed.platform==='youtube')return youtubeItems(await boundedFetch(`https://www.youtube.com/feeds/videos.xml?channel_id=${source}`,{fetchImpl}),source);
     if(feed.platform==='tiktok'){
       if(!env.TIKTOK_ACCESS_TOKEN)throw new ProviderError('Set TIKTOK_ACCESS_TOKEN for an authorized TikTok account with video.list permission.');

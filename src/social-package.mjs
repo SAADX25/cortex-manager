@@ -3,7 +3,7 @@ import path from 'node:path';
 import {validateSocial} from './social-config.mjs';
 
 // Explicit allowlist: no vault, .env, out, desktop bridge, .git or rebuild entry point.
-export const HOSTED_FILES=['src/hosted-bot.mjs','src/social-config.mjs','src/social-providers.mjs','src/social-engine.mjs','src/api.mjs','src/gateway.mjs','src/messages.mjs','src/message-image.mjs','src/permissions.mjs','src/safety.mjs','deploy/Discloud.md','deploy/ENVIRONMENT.example'];
+export const HOSTED_FILES=['src/hosted-bot.mjs','src/social-config.mjs','src/instagram-rss.mjs','src/social-providers.mjs','src/social-engine.mjs','src/api.mjs','src/gateway.mjs','src/messages.mjs','src/message-image.mjs','src/permissions.mjs','src/safety.mjs','deploy/Discloud.md','deploy/ENVIRONMENT.example'];
 const crc32=data=>{let n=0xffffffff;for(const byte of data){n^=byte;for(let i=0;i<8;i++)n=(n>>>1)^((n&1)?0xedb88320:0);}return (n^0xffffffff)>>>0;};
 export function zipStored(files){
   const blocks=[],central=[];let offset=0;
@@ -18,7 +18,7 @@ export function zipStored(files){
 }
 export function hostedPackage(root,config){
   config=validateSocial(config);const files=Object.fromEntries(HOSTED_FILES.map(name=>[name,fs.readFileSync(path.join(root,name))]));
-  files['package.json']=JSON.stringify({name:'cortex-social-bot',version:'1.0.0',private:true,type:'module',engines:{node:'>=22.4'},scripts:{start:'node src/hosted-bot.mjs'}},null,2);
+  files['package.json']=JSON.stringify({name:'cortex-social-bot',version:'1.0.0',private:true,type:'module',engines:{node:'>=22.9'},scripts:{start:'node --env-file-if-exists=.env src/hosted-bot.mjs'}},null,2);
   files['discloud.config']='NAME=Cortex Social Bot\nTYPE=bot\nMAIN=src/hosted-bot.mjs\nRAM=100\nVERSION=latest\nSTART=npm start\n';
   files['config/social-feeds.json']=JSON.stringify(config,null,2);return zipStored(files);
 }

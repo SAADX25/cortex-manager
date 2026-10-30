@@ -9,8 +9,9 @@ import {validateSocial,sourceId,mediaURL,manualSocialMessage,createSocialStore} 
 import {youtubeItems,createSocialProviders,boundedFetch,ProviderError} from '../src/social-providers.mjs';
 import {createSocialEngine} from '../src/social-engine.mjs';
 import {hostedPackage,HOSTED_FILES} from '../src/social-package.mjs';
-import {startHostedBot} from '../src/hosted-bot.mjs';
+import {startHostedBot,hostedStartupDiagnostic} from '../src/hosted-bot.mjs';
 import {P} from '../src/permissions.mjs';
+import {instagramRSSURL,instagramRSSItems} from '../src/instagram-rss.mjs';
 import {sample,fakeServer,ID,BOT_ROLE} from './helpers/fake.mjs';
 const root=fileURLToPath(new URL('../',import.meta.url)),channelId='777777777777777777',channel='UC'+'a'.repeat(22);
 const feed=(extra={})=>({id:'source-1',guildId:ID,channelId,platform:'youtube',source:channel,enabled:true,language:'ar',...extra});
@@ -103,8 +104,9 @@ test('provider errors back off and isolate destinations; concurrent ticks do not
  await engine.tick(config());
 });
 test('package contains only allowlisted source, nonsecret configuration and root startup files',()=>{
- const zip=hostedPackage(root,config()),names=[];let offset=0;
- while(zip.readUInt32LE(offset)===0x04034b50){const length=zip.readUInt32LE(offset+18),n=zip.readUInt16LE(offset+26),extra=zip.readUInt16LE(offset+28);names.push(zip.subarray(offset+30,offset+30+n).toString());offset+=30+n+extra+length;}
+ const zip=hostedPackage(root,config()),names=[],contents=new Map();let offset=0;
+ while(zip.readUInt32LE(offset)===0x04034b50){const length=zip.readUInt32LE(offset+18),n=zip.readUInt16LE(offset+26),extra=zip.readUInt16LE(offset+28),name=zip.subarray(offset+30,offset+30+n).toString(),start=offset+30+n+extra;names.push(name);contents.set(name,zip.subarray(start,start+length).toString());offset=start+length;}
+ const metadata=JSON.parse(contents.get('package.json'));assert.equal(metadata.scripts.start,'node --env-file-if-exists=.env src/hosted-bot.mjs');assert.equal(metadata.engines.node,'>=22.9');assert.match(contents.get('discloud.config'),/START=npm start/);assert.deepEqual(JSON.parse(contents.get('config/social-feeds.json')),config());
  assert.deepEqual(names.sort(),[...HOSTED_FILES,'package.json','discloud.config','config/social-feeds.json'].sort());assert.ok(names.every(n=>!/(^|\/)(\.env|out|desktop|\.git|data)(\/|$)/.test(n)));
  for(const name of names.filter(n=>n.endsWith('.mjs'))){const text=fs.readFileSync(path.join(root,name),'utf8');for(const [,dependency]of text.matchAll(/from '(\.\/[^']+)'/g))assert.ok(names.includes(path.posix.normalize(path.posix.join(path.posix.dirname(name),dependency))),`${name} depends on missing ${dependency}`);}
 });
@@ -112,4 +114,29 @@ test('hosted lifecycle starts independently of stdin and stops without mutations
  const dir=temp(t);fs.mkdirSync(path.join(dir,'config'));fs.writeFileSync(path.join(dir,'config/social-feeds.json'),JSON.stringify(config([])));
  let instance;class Gateway extends EventEmitter{constructor(){super();instance=this;}start(){this.running=true;this.emit('status',{status:'online',message:'secret'});}stop(){this.running=false;}}
  const logs=[],bot=await startHostedBot({root:dir,env:{DISCORD_BOT_TOKEN:'test-secret'},api:{},Gateway,fetchItems:async()=>[],log:e=>logs.push(e)});assert.ok(instance.running);assert.ok(!JSON.stringify(logs).includes('secret'));await bot.stop();assert.equal(instance.running,false);
+});
+test('startup diagnosis distinguishes missing token, missing config and invalid config without leaking credentials',async t=>{
+ const root=temp(t),secret='test-secret-never-log';
+ await assert.rejects(startHostedBot({root,env:{},log(){}}),error=>hostedStartupDiagnostic(error).code==='MISSING_BOT_TOKEN');
+ await assert.rejects(startHostedBot({root,env:{DISCORD_BOT_TOKEN:'Bot '+secret},log(){}}),error=>hostedStartupDiagnostic(error).code==='INVALID_TOKEN_FORMAT'&&!JSON.stringify(hostedStartupDiagnostic(error)).includes(secret));
+ await assert.rejects(startHostedBot({root,env:{DISCORD_BOT_TOKEN:secret},log(){}}),error=>hostedStartupDiagnostic(error).code==='MISSING_FEED_CONFIG');
+ fs.mkdirSync(path.join(root,'config'));fs.writeFileSync(path.join(root,'config/social-feeds.json'),secret);
+ await assert.rejects(startHostedBot({root,env:{DISCORD_BOT_TOKEN:secret},log(){}}),error=>hostedStartupDiagnostic(error).code==='INVALID_FEED_CONFIG'&&!JSON.stringify(hostedStartupDiagnostic(error)).includes(secret));
+ assert.ok(!JSON.stringify(hostedStartupDiagnostic(new Error(secret))).includes(secret));
+});
+
+const rssURL='https://rss.app/feeds/0Jtxh0Ews2TCWbLm.xml';
+const rss=(code='abc')=>`<?xml version="1.0"?><rss><channel><link>https://www.instagram.com/creator/</link><item><title><![CDATA[A &amp; B <b>clip</b>]]></title><link>https://www.instagram.com/p/${code}/</link><pubDate>Thu, 29 Oct 2026 21:27:37 GMT</pubDate></item></channel></rss>`;
+test('Instagram RSS requires direct allowlisted XML and validates account, dates, links and bounded XML',()=>{
+ assert.equal(instagramRSSURL(rssURL),rssURL);assert.equal(instagramRSSItems(rss(),'creator')[0].url,'https://instagram.com/p/abc/');
+ for(const url of ['https://rssviewer.app/'+encodeURIComponent(rssURL),rssURL+'?x=1',rssURL.replace('rss.app','evil.test'),'http://rss.app/feeds/12345678.xml'])assert.throws(()=>instagramRSSURL(url));
+ for(const xml of [rss().replace('creator/','someone/'),rss().replace('www.instagram.com/p','evil.test/p'),rss().replace('Thu, 29 Oct 2026 21:27:37 GMT','invalid'),rss().replace('</item>',''),'< !DOCTYPE rss>'+rss(),'<!DOCTYPE rss>'+rss(),rss().replace('</channel>','<item><link>https://instagram.com/p/abc/</link><pubDate>2026-10-30</pubDate></item></channel>')])assert.throws(()=>instagramRSSItems(xml,'creator'));
+ assert.throws(()=>validateSocial(config([feed({rssURL})])));assert.equal(validateSocial(config([feed({platform:'instagram',source:'creator',rssURL})])).feeds[0].rssURL,rssURL);
+});
+test('Instagram RSS fetch uses no Meta credentials and no redirects',async()=>{
+ const calls=[],provider=createSocialProviders({env:{},fetchImpl:async(url,options)=>{calls.push({url,options});return new Response(rss());}});
+ assert.equal((await provider(feed({platform:'instagram',source:'creator',rssURL})))[0].id,'instagram:abc');assert.equal(calls.length,1);assert.equal(calls[0].url,rssURL);assert.equal(calls[0].options.redirect,'error');assert.ok(!calls[0].options.headers?.Authorization);
+});
+test('changing Instagram RSS establishes a fresh baseline without replaying posts',async t=>{
+ const h=harness(t),engine=h.make(),f=feed({platform:'instagram',source:'creator'});await engine.tick(config([f]));h.advance();h.newItem('new-before-rss');await engine.tick(config([{...f,rssURL}]));assert.equal(h.server.calls.length,0);assert.equal(h.statuses.at(-1).status,'baseline');h.advance();h.newItem('new-after-rss');await engine.tick(config([{...f,rssURL}]));assert.equal(h.server.calls.length,1);
 });
