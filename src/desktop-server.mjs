@@ -1,4 +1,8 @@
 import {createWorkspaceStore} from './workspace-store.mjs';
+import {createSocialStore,manualSocialMessage,validateSocial} from './social-config.mjs';
+import {hostedPackage} from './social-package.mjs';
+import {createInstagramThumbnailResolver} from './instagram-thumbnail.mjs';
+import {createSocialLinkReader} from './social-links.mjs';
 import {prepareBatch,batchPublic,batchSummary} from './batch-editor.mjs';
 import {simulatePermissions} from './permission-simulator.mjs';
 import {defaultDesign,designTemplate,validateCustomDesign} from './custom-design.mjs';
@@ -26,7 +30,7 @@ import {prepareMessage,messagePreview} from './messages.mjs';
 const ROOT=fileURLToPath(new URL('../',import.meta.url));
 const ACTIONS=new Set(['batch-preview','batch-apply','permission-simulate','role-grant-preview','role-grant-apply','message-preview','message-send','server-save','server-select','server-remove','credentials-save','credentials-forget','connect','check','inventory','online','stop','preview','rebuild','edit-preview','edit-apply','shutdown','client-closed']);
 const REPORTS=new Set(['batch-plan.json','batch-snapshot.json','batch-preview.txt','batch-result.json','design.json','role-grant-plan.json','role-grant-preview.txt','role-grant-result.json','preview.md','plan.json','approval.json','snapshot.json','result.json','execution-log.txt','failure.json','edit-preview.txt','edit-plan.json','edit-snapshot.json','edit-result.json','edit-conflict.json','message-plan.json','message-preview.txt','message-result.json']);
-const STATIC=new Map([['/','index.html'],['/index.html','index.html'],['/app.js','app.js'],['/i18n.js','i18n.js'],['/designer.js','designer.js'],['/arrange.js','arrange.js'],['/workspace-drafts.js','workspace-drafts.js'],['/workbench-ui.js','workbench-ui.js'],['/styles.css','styles.css'],['/favicon.svg','favicon.svg']]);
+const STATIC=new Map([['/','index.html'],['/index.html','index.html'],['/app.js','app.js'],['/i18n.js','i18n.js'],['/designer.js','designer.js'],['/arrange.js','arrange.js'],['/workspace-drafts.js','workspace-drafts.js'],['/workbench-ui.js','workbench-ui.js'],['/social-ui.js','social-ui.js'],['/styles.css','styles.css'],['/favicon.svg','favicon.svg']]);
 const TYPES={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml; charset=utf-8','.json':'application/json; charset=utf-8','.md':'text/plain; charset=utf-8','.txt':'text/plain; charset=utf-8'};
 const MAX_BODY=256*1024;
 
@@ -85,6 +89,9 @@ export async function createDesktopServer({root=ROOT,sessionDir,runWorker=spawnD
   const key=randomBytes(32).toString('hex'),secrets=new Set();
   let credentials={token:'',guildId:''},job=null,presenceWorker=null,presenceStopping=null,closed=false,lastSeen=0,activeOperation=null,clientClosedTimer=null;
   const workspaceStore=createWorkspaceStore({root,demo});
+  const socialStore=createSocialStore({root,demo});
+  const socialLinks=createSocialLinkReader({root,demo,socialStore});
+  const resolveInstagramThumbnail=createInstagramThumbnailResolver();
   const vault=credentialStore??createCredentialStore({root});let credentialsSaved=false,credentialLoadError=null;
   if(!demo)try{const saved=await vault.load();if(saved){credentials=saved;secrets.add(saved.token);credentialsSaved=true;}}catch{credentialLoadError='تعذّرت قراءة البيانات المحفوظة. أدخل بيانات البوت مجددًا أو احذف البيانات المحفوظة.';}
   let profiles=null,profileLoadError=null;
@@ -153,7 +160,7 @@ export async function createDesktopServer({root=ROOT,sessionDir,runWorker=spawnD
       if(mode==='edit-apply')invalidate();
       if(mode==='message-send'){state.messagePreview=null;state.messageResult=jsonReport('message-result.json')??state.messageResult;}
       if(result.code!==0){state.error=state.error??'تعذّرت العملية. راجع سجل التشغيل.';log('انتهت العملية دون تطبيق الخطوات المتبقية.','error');}
-      else {state.error=null;log(mode==='preview'?'خطة إعادة البناء جاهزة للمراجعة؛ لم يتغير السيرفر.':'اكتملت العملية.','success');
+      else {state.error=null;log(mode==='preview'?'خطة إعادة البناء جاهزة للمراجعة؛ لم يتغير السيرفر.':mode==='message-preview'?'اكتملت المعاينة فقط؛ اضغط إرسال ثم أكّد لنشر الرسالة في Discord.':'اكتملت العملية.','success');
         if(connectAfter&&state.connected&&epoch===presenceEpoch&&!closed&&!presenceWorker&&!presenceStopping)launch('online',config,true);
       }
     }).catch(error=>{state.error=redact(error.message);log(error.message,'error');}).finally(()=>{if(job===handle){job=null;state.busy=false;state.operation=null;activeOperation=null;}});
@@ -258,6 +265,28 @@ export async function createDesktopServer({root=ROOT,sessionDir,runWorker=spawnD
         const supplied=String(req.headers['x-cortex-key']??'');
         if(!/^[a-f0-9]{64}$/.test(supplied)||!timingSafeEqual(Buffer.from(supplied),Buffer.from(key)))return send(401,{error:'جلسة محلية غير صالحة.'});
         lastSeen=Date.now();
+        if(url.pathname==='/api/social/package'&&req.method==='GET'){
+          if(demo)return send(403,{error:'Deployment export is unavailable in demo mode.'});
+          res.setHeader('Content-Disposition','attachment; filename="Cortex-Social-Discloud.zip"');
+          return send(200,hostedPackage(root,socialStore.read().config),'application/zip');
+        }
+        if(url.pathname==='/api/social/links'&&req.method==='GET')return send(200,socialLinks.read());
+        if(['/api/social','/api/social/manual','/api/social/validate'].includes(url.pathname)){
+          if(url.pathname==='/api/social'&&req.method==='GET')return send(200,socialStore.read());
+          if(req.method!=='POST')return send(405,{error:'Method not allowed.'});
+          if(!/^application\/json(?:;|$)/i.test(String(req.headers['content-type']??'')))return send(415,{error:'JSON required.'});
+          let size=0;const parts=[];for await(const part of req){size+=part.length;if(size>(url.pathname==='/api/social/manual'?3*1024*1024:64000)){send(413,{error:'Social settings too large.'});req.resume();return;}parts.push(part);}
+          let body;try{body=JSON.parse(Buffer.concat(parts).toString('utf8'));}catch{return send(400,{error:'Invalid JSON.'});}
+          if(url.pathname==='/api/social/manual'){
+            const request=manualSocialMessage(body??{});
+            if(body?.captureThumbnail!==undefined&&typeof body.captureThumbnail!=='boolean')return send(400,{error:'Invalid thumbnail option.'});
+            const thumbnail=body?.captureThumbnail?(demo?{status:'unavailable',reason:'demo'}:await resolveInstagramThumbnail(body.url)):{status:'not-requested'};
+            if(thumbnail.image)request.image=thumbnail.image;
+            return send(200,{request,thumbnail:{status:thumbnail.status,...(thumbnail.reason?{reason:thumbnail.reason}:{})}});
+          }
+          if(url.pathname==='/api/social/validate')return send(200,{config:validateSocial(body)});
+          return send(200,socialStore.save(body));
+        }
         if(url.pathname==='/api/workspace'){
           if(req.method==='GET')return send(200,workspaceStore.read(url.searchParams.get('guildId')));
           if(req.method!=='POST')return send(405,{error:'Method not allowed.'});
@@ -307,8 +336,9 @@ export async function createDesktopServer({root=ROOT,sessionDir,runWorker=spawnD
         }
         if(req.method==='POST'&&url.pathname==='/api/action'){
           if(!/^application\/json(?:;|$)/i.test(String(req.headers['content-type']??'')))return send(415,{error:'يلزم طلب JSON.'});
-          let size=0;const parts=[];for await(const part of req){size+=part.length;if(size>MAX_BODY){send(413,{error:'الطلب كبير جداً.'});req.resume();return;}parts.push(part);}
-          let body;try{body=JSON.parse(Buffer.concat(parts).toString('utf8'));}catch{return send(400,{error:'JSON غير صالح.'});}
+          let size=0;const parts=[];for await(const part of req){size+=part.length;if(size>3*1024*1024){send(413,{error:'الطلب كبير جداً.'});req.resume();return;}parts.push(part);}
+          let body;try{body=JSON.parse(Buffer.concat(parts).toString('utf8'));}catch{return send(size>MAX_BODY?413:400,{error:size>MAX_BODY?'الطلب كبير جداً.':'JSON غير صالح.'});}
+          if(size>MAX_BODY&&body?.action!=='message-preview')return send(413,{error:'الطلب كبير جداً.'});
           await action(body);return send(202,{ok:true});
         }
         return send(404,{error:'المسار غير موجود.'});

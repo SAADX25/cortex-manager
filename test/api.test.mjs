@@ -19,6 +19,11 @@ test('ambiguous POST failure is not retried to avoid duplicate channels or roles
   const api=new DiscordAPI('fake-token',{sleep:async()=>{},fetchImpl:async()=>{requests++;return new Response('upstream error',{status:502});}});
   await assert.rejects(api.post('/guilds/123/channels',{}),/HTTP 502/);assert.equal(requests,1);
 });
+test('image uploads use multipart payload_json and binary files without overriding the multipart boundary',async()=>{
+ const bytes=Buffer.from('image-bytes'),payload={content:'caption',attachments:[{id:0,filename:'cortex-image.png'}],allowed_mentions:{parse:[]}};let calls=0;
+ const api=new DiscordAPI('fake-token',{sleep:async()=>{},fetchImpl:async(url,options)=>{calls++;assert.equal(options.headers['Content-Type'],undefined);assert.equal(options.headers.Authorization,'Bot fake-token');assert.ok(options.body instanceof FormData);assert.deepEqual(JSON.parse(options.body.get('payload_json')),payload);const file=options.body.get('files[0]');assert.equal(file.name,'cortex-image.png');assert.equal(file.type,'image/png');assert.deepEqual(Buffer.from(await file.arrayBuffer()),bytes);return new Response('{"id":"123456789012345678"}');}});
+ await api.call('POST','/channels/123/messages',payload,{files:[{name:'cortex-image.png',type:'image/png',bytes}]});assert.equal(calls,1);
+});
 test('transient GET failure retries and non-JSON errors retain status',async()=>{
   let requests=0;const sleeps=[];
   const api=new DiscordAPI('fake-token',{sleep:async ms=>sleeps.push(ms),fetchImpl:async()=>++requests===1?new Response('',{status:503}):new Response('{}')});

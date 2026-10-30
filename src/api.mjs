@@ -5,17 +5,19 @@ export class DiscordAPI {
     if(!token)throw new Error('DISCORD_BOT_TOKEN missing');
     this.token=token;this.fetch=fetchImpl;this.sleep=sleep;this.queue=Promise.resolve();
   }
-  call(method,path,body) {
+  call(method,path,body,options) {
     // Serialize requests so route and global cooldowns apply to every caller.
-    const result=this.queue.then(()=>this.request(method,path,body));
+    const result=this.queue.then(()=>this.request(method,path,body,options));
     this.queue=result.catch(()=>{});return result;
   }
-  async request(method,path,body) {
+  async request(method,path,body,{files}={}) {
     for(let tries=0;tries<7;tries++) {
+      let payload=body===undefined?undefined:JSON.stringify(body);
+      if(files?.length){payload=new FormData();payload.append('payload_json',JSON.stringify(body));files.forEach((file,index)=>payload.append(`files[${index}]`,new Blob([file.bytes],{type:file.type}),file.name));}
       const r=await this.fetch(BASE+path,{
-        method,headers:{Authorization:`Bot ${this.token}`,'Content-Type':'application/json','User-Agent':'CortexManager/4.0',
+        method,headers:{Authorization:`Bot ${this.token}`,...(files?.length?{}:{'Content-Type':'application/json'}),'User-Agent':'CortexManager/4.0',
           ...(method==='GET'?{}:{'X-Audit-Log-Reason':'Reviewed Cortex Manager server redesign'})},
-        body:body===undefined?undefined:JSON.stringify(body),signal:AbortSignal.timeout(30000),
+        body:payload,signal:AbortSignal.timeout(30000),
       });
       const raw=await r.text();
       let json;try{json=raw?JSON.parse(raw):null;}catch{json=null;}

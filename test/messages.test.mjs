@@ -5,11 +5,31 @@ import os from 'node:os';
 import path from 'node:path';
 import {prepareMessage,previewMessage,sendMessage,messageProtection} from '../src/messages.mjs';
 import {P} from '../src/permissions.mjs';
+import {createHash} from 'node:crypto';
+import {messagePreview} from '../src/messages.mjs';
+import {validateMessageImage} from '../src/message-image.mjs';
 import {sample,fakeServer,ID,BOT_ROLE} from './helpers/fake.mjs';
 
 function temp(t){const base=path.resolve(os.tmpdir()),dir=fs.mkdtempSync(path.join(base,'cortex-message-'));t.after(()=>{assert.equal(path.dirname(path.resolve(dir)),base);assert.match(path.basename(dir),/^cortex-message-/);fs.rmSync(dir,{recursive:true,force:true});});return dir;}
 const request=s=>({channelId:s.channels[1].id,content:'أهلًا بالجميع 🎮 @everyone <@123456789012345678>'});
 const confirmation=p=>({confirmed:true,guildId:p.guildId,channelId:p.channelId,approvalHash:p.approvalHash});
+
+const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aZS8AAAAASUVORK5CYII=','base64');
+const image=()=>({type:'image/png',data:png.toString('base64'),sha256:createHash('sha256').update(png).digest('hex')});
+test('reviewed image upload binds exact bytes, requires Attach Files, and preview never exposes binary data',async t=>{
+ const s=sample(),server=fakeServer(s),directory=temp(t),req={...request(s),image:image()};
+ const plan=await previewMessage(server.api,ID,req,directory);assert.equal(server.calls.length,0);assert.deepEqual(plan.body.attachments,[{id:0,filename:'cortex-image.png'}]);
+ const preview=messagePreview(plan);assert.equal(preview.image.size,png.length);assert.equal(preview.image.sha256,req.image.sha256);assert.equal(preview.image.data,undefined);
+ let files;const api={...server.api,call:(method,url,body,options)=>{files=options.files;return server.api.call(method,url,body);}};
+ await sendMessage(api,ID,confirmation(plan),directory);assert.deepEqual(files[0].bytes,png);assert.equal(files[0].type,'image/png');assert.equal(server.calls.length,1);
+ await assert.rejects(sendMessage(api,ID,confirmation(plan),directory),/سبق بدء/);
+ s.roles[0].permissions='0';s.roles.find(r=>r.id===BOT_ROLE).permissions=String(P.ViewChannel|P.SendMessages);
+ assert.throws(()=>prepareMessage(s,req,'a'.repeat(24)),/Attach Files/);
+});
+test('image validation rejects tampering, fake MIME, non-image files, unknown fields and oversize data',()=>{
+ assert.equal(validateMessageImage(image()).info.name,'cortex-image.png');
+ for(const bad of [{...image(),sha256:'0'.repeat(64)},{...image(),type:'image/jpeg'},{...image(),type:'image/svg+xml'},{...image(),data:'<svg/>'},{...image(),data:'A'.repeat(2800000)},{...image(),path:'C:/secret.png'}])assert.throws(()=>validateMessageImage(bad));
+});
 
 test('messages validate destination, size and fields and disable every automatic mention',()=>{
   const s=sample(),nonce='a'.repeat(24),p=prepareMessage(s,request(s),nonce);

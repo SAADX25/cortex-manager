@@ -4,6 +4,7 @@
 // reports remain original data. Existing DOM nodes and form values are retained.
 (() => {
 const en = {
+'البثوث والمقاطع':'Streams & videos',
 'تغيّر قالب الهيكلة في نافذة أخرى. صدّر مسودتك قبل إعادة التحميل.':'The blueprint changed in another window. Export your draft before reloading.',
 'مسودة غير مكتملة':'Incomplete draft',
 'توجد مسودة أقدم لهذا العنصر. راجعها في مساحة التغييرات قبل استبدالها.':'An older draft exists for this item. Review it in the change workspace before replacing it.',

@@ -1,4 +1,5 @@
 import test from 'node:test';
+import {createHash} from 'node:crypto';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -35,6 +36,30 @@ async function setup(t,options={}) {
   return {...bridge,...control,base,request,state,action,settled};
 }
 const credentials={token:'desktop-test-token-never-use',guildId:ID};
+
+test('large image previews cross the authenticated bridge while ordinary actions keep their original size limit',async t=>{
+ const s=await setup(t,{demo:true}),png=Buffer.concat([Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aZS8AAAAASUVORK5CYII=','base64'),Buffer.alloc(300000)]),image={type:'image/png',data:png.toString('base64'),sha256:createHash('sha256').update(png).digest('hex')},inventory=(await s.state()).inventory;
+ const channel=inventory.channels.find(c=>c.type===0),body={channelId:channel.id,url:'https://instagram.com/p/example/',caption:'Review only',image};
+ const response=await s.request('/api/social/manual',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});assert.equal(response.status,200);const request=(await response.json()).request;assert.equal(request.image.sha256,image.sha256);
+ assert.equal((await s.action('message-preview',{...credentials,guildId:inventory.guildId,messageRequest:request})).status,202);const state=await s.state();assert.equal(state.messagePreview.image.sha256,image.sha256);assert.equal(state.messagePreview.image.data,undefined);assert.equal(s.calls.length,0);
+ assert.equal((await s.action('inventory',{...credentials,padding:'x'.repeat(300000)})).status,413);
+});
+
+test('social routes require authentication, validate and persist nonsecret config without workers, and prepare manual previews without sending',async t=>{
+ const s=await setup(t),post=(url,body)=>s.request(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+ assert.equal((await fetch(s.base+'/api/social')).status,401);assert.equal((await fetch(s.base+'/api/social/package')).status,401);
+ const first=await(await s.request('/api/social')).json(),feed={id:'youtube-1',guildId:ID,channelId:'777777777777777777',platform:'youtube',source:'UC'+'a'.repeat(22),language:'ar',enabled:true},config={version:1,feeds:[feed]};
+ assert.equal((await post('/api/social',{config,baseRevision:first.revision})).status,400);
+ assert.equal((await post('/api/social/validate',config)).status,200);
+ let r=await post('/api/social',{config,baseRevision:first.revision,confirmAutomatic:true});assert.equal(r.status,200);const saved=await r.json();assert.equal(saved.config.feeds[0].enabled,true);
+ assert.equal((await post('/api/social',{config,baseRevision:first.revision,confirmAutomatic:true})).status,409);
+ assert.equal((await fetch(s.base+'/api/social/links')).status,401);
+ assert.deepEqual(await(await s.request('/api/social/links')).json(),{links:[]});assert.equal((await post('/api/social/link',{})).status,404);
+ r=await post('/api/social/manual',{channelId:feed.channelId,url:'https://youtu.be/abcdefghijk',caption:'Hello',language:'en'});assert.equal(r.status,200);assert.match((await r.json()).request.content,/Hello/);assert.equal(s.calls.length,0);
+ assert.equal((await post('/api/social/manual',{channelId:feed.channelId,url:'https://localhost/private'})).status,400);
+ const demo=await setup(t,{demo:true});assert.equal((await demo.request('/api/social/package')).status,403);
+ const demoPreview=await demo.request('/api/social/manual',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({channelId:feed.channelId,url:'https://instagram.com/p/example/',captureThumbnail:true})});assert.equal(demoPreview.status,200);const thumbnail=(await demoPreview.json()).thumbnail;assert.equal(thumbnail.status,'unavailable');assert.equal(thumbnail.reason,'demo');assert.equal(demo.calls.length,0);
+});
 
 test('blueprint autosave uses a revision to reject overwriting a newer draft from another window',async t=>{
  const s=await setup(t),url='/api/design?guildId='+ID,initial=await (await s.request(url)).json();

@@ -1,0 +1,11 @@
+# Set these in Discloud's Environment Variables. Never commit real credentials.
+DISCORD_BOT_TOKEN=YOUR_DISCORD_BOT_TOKEN
+# Only required for Kick live notifications:
+KICK_CLIENT_ID=
+KICK_CLIENT_SECRET=
+# Only required for your authorized Instagram Business/Creator account:
+INSTAGRAM_USER_ID=
+INSTAGRAM_ACCESS_TOKEN=
+INSTAGRAM_API_VERSION=v25.0
+# TikTok: authorized creator token from an approved Display API app (video.list).
+TIKTOK_ACCESS_TOKEN=
