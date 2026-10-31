@@ -1077,7 +1077,15 @@ function entityControls(kind) {
     (busy() ? 'disabled' : '') +
     '>' +
     icon('refresh') +
-    '</button></div>'
+    '</button>' +
+    (kind === 'role'
+      ? '<button type="button" class="btn btn-ghost btn-small" id="translateRoleNames" ' +
+        (busy() || !inventory() ? 'disabled' : '') +
+        '>' +
+        window.CortexI18n.text('role_translation.button') +
+        '</button>'
+      : '') +
+    '</div>'
   );
 }
 function renderEntities(kind) {
@@ -1097,6 +1105,7 @@ function renderEntities(kind) {
   );
   $('#entityRefresh').onclick = () => action('inventory');
   $('#addEntity').onclick = () => (isRole ? createEntity('role') : showCreateChannel());
+  if (isRole) $('#translateRoleNames').onclick = () => window.CortexRoleTranslation.open();
   $('#entitySearch').oninput = (event) => {
     captureView();
     model.query = event.target.value;

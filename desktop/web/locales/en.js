@@ -1,6 +1,20 @@
 'use strict';
 window.CortexLocales ??= {};
 window.CortexLocales.en = Object.freeze({
+  'role_translation.title': 'Translate role names to English',
+  'role_translation.description':
+    'Rename existing roles only; members, permissions and colors stay unchanged. Add suggestions to the change workspace, then review and confirm saving.',
+  'role_translation.ready': 'Ready for review',
+  'role_translation.protected': 'Not manageable',
+  'role_translation.draft': 'Has an existing draft',
+  'role_translation.unknown': 'Custom name; kept unchanged',
+  'role_translation.duplicate': 'Suggested name already exists',
+  'role_translation.limit': 'Current review limit reached',
+  'role_translation.empty': 'No Arabic role names to translate.',
+  'role_translation.cancel': 'Cancel',
+  'role_translation.queue': 'Add to review',
+  'role_translation.changed': 'Roles or drafts changed. Open the translation preview again.',
+  'role_translation.button': 'Translate roles to English',
   'welcome.preview_member': 'New member',
   'ui.discord_role_safeguards_enabled': 'Discord role safeguards enabled',
   'ui.based_on_permissions_and_bot_hierarchy': 'Based on permissions and bot hierarchy',

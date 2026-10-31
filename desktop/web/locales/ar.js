@@ -1,6 +1,20 @@
 'use strict';
 window.CortexLocales ??= {};
 window.CortexLocales.ar = Object.freeze({
+  'role_translation.title': 'ترجمة أسماء الرتب إلى الإنجليزية',
+  'role_translation.description':
+    'تغيير أسماء الرتب الحالية فقط؛ تبقى الأعضاء والصلاحيات والألوان كما هي. أضف المقترحات إلى مساحة التغييرات ثم راجعها وأكّد الحفظ.',
+  'role_translation.ready': 'جاهزة للمراجعة',
+  'role_translation.protected': 'غير قابلة للإدارة',
+  'role_translation.draft': 'لديها مسودة محفوظة',
+  'role_translation.unknown': 'اسم مخصص؛ اتركه كما هو',
+  'role_translation.duplicate': 'الاسم المقترح موجود',
+  'role_translation.limit': 'تجاوز حد المراجعة الحالية',
+  'role_translation.empty': 'لا توجد أسماء رتب عربية للترجمة.',
+  'role_translation.cancel': 'إلغاء',
+  'role_translation.queue': 'إضافة للمراجعة',
+  'role_translation.changed': 'تغيّرت الرتب أو المسودات. افتح معاينة الترجمة من جديد.',
+  'role_translation.button': 'ترجمة الرتب إلى English',
   'welcome.preview_member': 'عضو جديد',
   'ui.discord_role_safeguards_enabled': 'حماية رتب Discord مفعّلة',
   'ui.based_on_permissions_and_bot_hierarchy': 'حسب الصلاحيات وترتيب البوت',

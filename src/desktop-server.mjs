@@ -88,6 +88,7 @@ const STATIC = new Map([
   ['/', 'index.html'],
   ['/index.html', 'index.html'],
   ['/app.js', 'app.js'],
+  ['/role-translation.js', 'role-translation.js'],
   ['/i18n.js', 'i18n.js'],
   ['/locales/ar.js', 'locales/ar.js'],
   ['/locales/en.js', 'locales/en.js'],

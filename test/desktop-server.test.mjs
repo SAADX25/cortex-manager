@@ -1628,6 +1628,14 @@ test('language catalogs load from the fixed static allowlist without starting wo
     assert.equal(await response.text(), source);
     assert.ok(html.indexOf('./locales/' + name) < html.indexOf('./i18n.js'));
   }
+  const roleSource = fs.readFileSync(
+    new URL('../desktop/web/role-translation.js', import.meta.url),
+    'utf8',
+  );
+  fs.writeFileSync(path.join(s.root, 'desktop/web/role-translation.js'), roleSource);
+  const roleResponse = await s.request('/role-translation.js');
+  assert.equal(roleResponse.status, 200);
+  assert.equal(await roleResponse.text(), roleSource);
   assert.equal((await s.request('/locales/unknown.js')).status, 404);
   assert.equal(s.calls.length, 0);
 });

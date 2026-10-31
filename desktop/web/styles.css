@@ -7051,3 +7051,36 @@ html[dir='ltr'] .social-page .social-field select {
   border-color: var(--preset-accent);
   box-shadow: inset 0 0 0 1px var(--preset-accent);
 }
+
+.role-translation-list {
+  max-height: 360px;
+}
+.role-translation-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 15px;
+  padding: 12px 0;
+  border-bottom: 1px solid #34394f;
+}
+.role-translation-row > div {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.role-translation-row del,
+.role-translation-row ins {
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+.role-translation-row del {
+  color: #98a5bd;
+}
+.role-translation-row ins {
+  color: #8dd6b2;
+}
+.role-translation-row small {
+  font-size: 11px;
+  color: #a6a0bb;
+  flex-shrink: 0;
+}
