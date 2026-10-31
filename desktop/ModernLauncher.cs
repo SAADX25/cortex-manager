@@ -71,7 +71,7 @@ internal static class ModernLauncher
             if (!service.Start()) throw new Exception("تعذر تشغيل الخدمة المحلية.");
             service.BeginOutputReadLine(); service.BeginErrorReadLine();
             if (!ready.WaitOne(20000) || String.IsNullOrEmpty(localUrl))
-                throw new Exception("تعذر تجهيز لوحة التحكم المحلية. " + (startupError ?? "تحقق من تثبيت Node.js 22.4 أو أحدث."));
+                throw new Exception("تعذر تجهيز لوحة التحكم المحلية. " + (startupError ?? "تحقق من تثبيت Node.js 22.9 أو أحدث."));
             Uri uri;
             if (!Uri.TryCreate(localUrl, UriKind.Absolute, out uri) || uri.Scheme != "http" || uri.Host != "127.0.0.1" || uri.Port < 1)
                 throw new Exception("عنوان خدمة محلية غير صالح.");
@@ -115,7 +115,7 @@ internal static class ModernLauncher
         {
             try { string candidate = Path.Combine(directory.Trim('"'), "node.exe"); if (File.Exists(candidate)) return candidate; } catch { }
         }
-        throw new Exception("ثبّت Node.js 22.4 أو أحدث ثم افتح البرنامج مجددًا.");
+        throw new Exception("ثبّت Node.js 22.9 أو أحدث ثم افتح البرنامج مجددًا.");
     }
 
     private static string FindEdge()

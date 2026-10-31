@@ -3,464 +3,2584 @@
 // All Discord content is escaped before template insertion. The API capability is
 // local to this window; browser memory holds input, and optional encrypted
 // credential storage is handled by the local Windows service.
-const $ = (selector,root=document)=>root.querySelector(selector);
-const $$ = (selector,root=document)=>[...root.querySelectorAll(selector)];
-const esc = value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const icon = name=>`<svg class="icon" aria-hidden="true"><use href="#i-${name}"/></svg>`;
-const keyHash=location.hash.slice(1),apiKey=keyHash.startsWith('key=')?new URLSearchParams(keyHash).get('key'):decodeURIComponent(keyHash);
+const $ = (selector, root = document) => root.querySelector(selector);
+const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
+const esc = (value) =>
+  String(value ?? '').replace(
+    /[&<>"']/g,
+    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c],
+  );
+const icon = (name) => `<svg class="icon" aria-hidden="true"><use href="#i-${name}"/></svg>`;
+const keyHash = location.hash.slice(1),
+  apiKey = keyHash.startsWith('key=')
+    ? new URLSearchParams(keyHash).get('key')
+    : decodeURIComponent(keyHash);
 // The fragment contains only the per-launch local capability, never the bot
 // token. Keeping it permits a normal window refresh without persistent storage.
-const titles={welcome:'الترحيب والمغادرة',social:'البثوث والمقاطع',changes:'مساحة التغييرات',simulator:'محاكي الصلاحيات',overview:'نظرة عامة',channels:'الأقسام والقنوات',roles:'الرتب والصلاحيات',redesign:'تصميم السيرفر',permissions:'فحص الصلاحيات',logs:'سجل النشاط',profile:'تخصيص السيرفر',settings:'إعدادات الاتصال'};
-const permissionNames={ViewChannel:'عرض القنوات',SendMessages:'إرسال الرسائل',ReadMessageHistory:'قراءة سجل الرسائل',AddReactions:'إضافة تفاعلات',EmbedLinks:'تضمين الروابط',AttachFiles:'إرفاق الملفات',Connect:'دخول القنوات الصوتية',Speak:'التحدث صوتيًا',MoveMembers:'نقل الأعضاء صوتيًا',ManageMessages:'إدارة الرسائل',ManageChannels:'إدارة القنوات',ManageRoles:'إدارة الرتب',ManageGuild:'إدارة السيرفر',ViewAuditLog:'عرض سجل التدقيق',Administrator:'مدير كامل',KickMembers:'طرد الأعضاء',BanMembers:'حظر الأعضاء',ModerateMembers:'إسكات الأعضاء مؤقتًا',ManageNicknames:'إدارة الأسماء المستعارة',ChangeNickname:'تغيير الاسم المستعار',MentionEveryone:'منشن الجميع',CreateInstantInvite:'إنشاء دعوة',ManageWebhooks:'إدارة Webhooks',ManageThreads:'إدارة المواضيع',CreatePublicThreads:'إنشاء مواضيع عامة',CreatePrivateThreads:'إنشاء مواضيع خاصة',SendMessagesInThreads:'إرسال رسائل في المواضيع',ManageEvents:'إدارة الفعاليات',CreateEvents:'إنشاء فعاليات',ManageGuildExpressions:'إدارة التعبيرات',UseExternalEmojis:'إيموجي خارجية',UseExternalStickers:'ملصقات خارجية',MuteMembers:'كتم الأعضاء صوتيًا',DeafenMembers:'إسكات الصوت للأعضاء',Stream:'بث مباشر',UseVAD:'استخدام النشاط الصوتي',PrioritySpeaker:'أولوية التحدث',RequestToSpeak:'طلب التحدث',UseApplicationCommands:'استخدام أوامر التطبيقات',SendVoiceMessages:'إرسال رسائل صوتية'};
-const model={page:'overview',state:{version:'6.0',busy:false,logs:[]},config:{token:'',guildId:''},editor:null,query:'',tab:'general',overwriteRole:'',reviewSignature:null,awaitingEdit:false,lastEditHash:null,lastInventory:'',lastStateSignature:'',pending:false,runningAction:null,loaded:false,connectionError:false,rebuildRead:false};
-let polling=false;
+const titles = {
+  welcome: 'الترحيب والمغادرة',
+  social: 'البثوث والمقاطع',
+  changes: 'مساحة التغييرات',
+  simulator: 'محاكي الصلاحيات',
+  overview: 'نظرة عامة',
+  channels: 'الأقسام والقنوات',
+  roles: 'الرتب والصلاحيات',
+  redesign: 'تصميم السيرفر',
+  permissions: 'فحص الصلاحيات',
+  logs: 'سجل النشاط',
+  profile: 'تخصيص السيرفر',
+  settings: 'إعدادات الاتصال',
+};
+const permissionNames = {
+  ViewChannel: 'عرض القنوات',
+  SendMessages: 'إرسال الرسائل',
+  ReadMessageHistory: 'قراءة سجل الرسائل',
+  AddReactions: 'إضافة تفاعلات',
+  EmbedLinks: 'تضمين الروابط',
+  AttachFiles: 'إرفاق الملفات',
+  Connect: 'دخول القنوات الصوتية',
+  Speak: 'التحدث صوتيًا',
+  MoveMembers: 'نقل الأعضاء صوتيًا',
+  ManageMessages: 'إدارة الرسائل',
+  ManageChannels: 'إدارة القنوات',
+  ManageRoles: 'إدارة الرتب',
+  ManageGuild: 'إدارة السيرفر',
+  ViewAuditLog: 'عرض سجل التدقيق',
+  Administrator: 'مدير كامل',
+  KickMembers: 'طرد الأعضاء',
+  BanMembers: 'حظر الأعضاء',
+  ModerateMembers: 'إسكات الأعضاء مؤقتًا',
+  ManageNicknames: 'إدارة الأسماء المستعارة',
+  ChangeNickname: 'تغيير الاسم المستعار',
+  MentionEveryone: 'منشن الجميع',
+  CreateInstantInvite: 'إنشاء دعوة',
+  ManageWebhooks: 'إدارة Webhooks',
+  ManageThreads: 'إدارة المواضيع',
+  CreatePublicThreads: 'إنشاء مواضيع عامة',
+  CreatePrivateThreads: 'إنشاء مواضيع خاصة',
+  SendMessagesInThreads: 'إرسال رسائل في المواضيع',
+  ManageEvents: 'إدارة الفعاليات',
+  CreateEvents: 'إنشاء فعاليات',
+  ManageGuildExpressions: 'إدارة التعبيرات',
+  UseExternalEmojis: 'إيموجي خارجية',
+  UseExternalStickers: 'ملصقات خارجية',
+  MuteMembers: 'كتم الأعضاء صوتيًا',
+  DeafenMembers: 'إسكات الصوت للأعضاء',
+  Stream: 'بث مباشر',
+  UseVAD: 'استخدام النشاط الصوتي',
+  PrioritySpeaker: 'أولوية التحدث',
+  RequestToSpeak: 'طلب التحدث',
+  UseApplicationCommands: 'استخدام أوامر التطبيقات',
+  SendVoiceMessages: 'إرسال رسائل صوتية',
+};
+const model = {
+  page: 'overview',
+  state: { version: '6.0', busy: false, logs: [] },
+  config: { token: '', guildId: '' },
+  editor: null,
+  query: '',
+  tab: 'general',
+  overwriteRole: '',
+  reviewSignature: null,
+  awaitingEdit: false,
+  lastEditHash: null,
+  lastInventory: '',
+  lastStateSignature: '',
+  pending: false,
+  runningAction: null,
+  loaded: false,
+  connectionError: false,
+  rebuildRead: false,
+};
+let polling = false;
 
-function inventory(){if(model.credentialsDirty)return null;const inv=model.state.inventory??model.state.diagnostics?.inventory??null;return inv&&model.config.guildId&&String(inv.guildId)!==model.config.guildId?null:inv;}
-function busy(){return !!model.state.busy||model.pending||model.workspacePreparing;}
-function online(){const s=model.state.presence?.status??model.state.online;return s===true||s==='online'||s==='ready'||s==='connected'||s?.status==='online';}
-function guildId(){return String(model.config.guildId||inventory()?.guildId||model.state.diagnostics?.guildId||'');}
-function savedServer(){return model.state.serverProfiles?.find(s=>s.id===guildId());}
-function guildName(){const fallback=model.config.guildId?'السيرفر المحدد':'اختر سيرفرك';return inventory()?.guildName||savedServer()?.name||window.CortexI18n?.translate(fallback)||fallback;}
-function colorHex(value){return '#'+Math.max(0,Number(value)||0).toString(16).padStart(6,'0').slice(-6);}
-function shortTime(value){try{return new Date(value??Date.now()).toLocaleTimeString(window.CortexI18n?.language==='en'?'en-US':'ar-JO',{hour:'2-digit',minute:'2-digit'});}catch{return 'الآن';}}
-function permissionLabel(name){return permissionNames[name]??name.replace(/([a-z])([A-Z])/g,'$1 $2');}
-function typeLabel(type){return ({0:'قناة نصية',2:'قناة صوتية',4:'قسم'})[type]??'قناة';}
-function typeIcon(type){return type===2?'voice':type===4?'folder':'hash';}
-function toast(message,type='info'){const node=document.createElement('div');node.className='toast '+type;node.innerHTML=icon(type==='success'?'check':'info')+`<span>${esc(message)}</span>`;$('#toasts').append(node);setTimeout(()=>node.remove(),6000);}
-// Session-only navigation state. No credentials or reviewed approvals are cached.
-const workspaceViews=new Map(),editorDrafts=new Map(),lastSelections=new Map();
-const draftStore=window.CortexDrafts.create(api,onDraftEvent);
-let renderedView=null,renderedEditor=null,renderedInspectorTab=null;
-function viewKey(){return guildId()+'|'+model.page;}
-function editorKey(e){return e?(e.workspaceGuildId??guildId())+'|'+e.kind+'|'+(e.item?.id??'new-'+(e.values?.type??0)):null;}
-function sameEditorSource(a,b){return a?.revision===b?.revision&&a?.readOnlyReason===b?.readOnlyReason&&a?.messageReadOnlyReason===b?.messageReadOnlyReason&&JSON.stringify(a?.flags)===JSON.stringify(b?.flags);}
-function rememberEditor(){
-  const e=model.editor;if(!e)return;const copy=structuredClone(e);copy.approval=null;copy.messageApproval=null;
-  const key=editorKey(e);editorDrafts.delete(key);editorDrafts.set(key,{editor:copy,tab:model.tab,overwriteRole:model.overwriteRole});
-  persistEditorDraft(e);
-  if(editorDrafts.size>100)editorDrafts.delete(editorDrafts.keys().next().value);
+function inventory() {
+  if (model.credentialsDirty) return null;
+  const inv = model.state.inventory ?? model.state.diagnostics?.inventory ?? null;
+  return inv && model.config.guildId && String(inv.guildId) !== model.config.guildId ? null : inv;
 }
-function captureView(){
-  if(!renderedView)return null;const state=workspaceViews.get(renderedView)??{groups:{},inspectorScroll:{}};
-  state.windowY=window.scrollY;const search=$('#entitySearch');if(search)state.query=search.value;
-  const tree=$('#entityTree');if(tree){state.treeScroll=tree.scrollTop;$$('[data-category-id]',tree).forEach(group=>state.groups[group.dataset.categoryId]=group.open);}
-  const inspector=$('.inspector-body');if(inspector&&renderedEditor)state.inspectorScroll[renderedEditor+'|'+(renderedInspectorTab??model.tab)]=inspector.scrollTop;
-  workspaceViews.set(renderedView,state);
-  const focused=document.activeElement;if(!focused||!$('#main').contains(focused))return null;
-  const attribute=['data-entity-id','data-design-permission','data-role-view','data-role-color','data-overwrite'].find(name=>focused.hasAttribute(name));
-  const selector=focused.id?'#'+CSS.escape(focused.id):attribute?'['+attribute+'="'+CSS.escape(focused.getAttribute(attribute))+'"]':null;
-  return selector?{view:renderedView,editor:renderedEditor,selector,start:focused.selectionStart,end:focused.selectionEnd}:null;
+function busy() {
+  return !!model.state.busy || model.pending || model.workspacePreparing;
 }
-function restoreView(key,focus){
-  const state=workspaceViews.get(key),tree=$('#entityTree');
-  if(tree){$$('[data-category-id]',tree).forEach(group=>{if(state&&Object.hasOwn(state.groups,group.dataset.categoryId))group.open=state.groups[group.dataset.categoryId];});tree.scrollTop=state?.treeScroll??0;}
-  const inspector=$('.inspector-body');if(inspector)inspector.scrollTop=state?.inspectorScroll?.[editorKey(model.editor)+'|'+model.tab]??0;
-  window.scrollTo(0,state?.windowY??0);
-  if(focus?.view===key&&(focus.selector==='#entitySearch'||focus.editor===editorKey(model.editor)||focus.selector.startsWith('[data-entity-id='))){const input=$(focus.selector);if(input&&!input.disabled){input.focus({preventScroll:true});if(typeof focus.start==='number'&&typeof input.setSelectionRange==='function'&&['text','search','password','url','tel'].includes(input.type))input.setSelectionRange(focus.start,focus.end);}}
+function online() {
+  const s = model.state.presence?.status ?? model.state.online;
+  return (
+    s === true || s === 'online' || s === 'ready' || s === 'connected' || s?.status === 'online'
+  );
 }
-function fitEntityLayout(){const layout=$('.entity-layout');if(layout)layout.style.setProperty('--entity-top',(layout.getBoundingClientRect().top+window.scrollY)+'px');}
-function go(page){
-  if(!titles[page]||page===model.page)return;captureView();rememberEditor();model.page=page;model.query=workspaceViews.get(viewKey())?.query??'';
-  render();$('#main').focus({preventScroll:true});
+function guildId() {
+  return String(
+    model.config.guildId || inventory()?.guildId || model.state.diagnostics?.guildId || '',
+  );
 }
-
-function setEditor(kind,item=null,action='update',type=0){
-  rememberEditor();
-  const key=editorKey({kind,item,action,values:{type},workspaceGuildId:guildId()}),cached=editorDrafts.get(key);
-  if(cached&&(item?sameEditorSource(cached.editor.item,item):cached.editor.action==='create')){
-    model.editor=structuredClone(cached.editor);model.editor.item=structuredClone(item);model.editor.approval=null;model.editor.messageApproval=null;model.tab=cached.tab;model.overwriteRole=cached.overwriteRole;model.awaitingEdit=false;model.awaitingMessage=false;model.reviewSignature=null;model.messageSignature=null;lastSelections.set(guildId()+'|'+kind,item?.id??'new-'+type);return;
+function savedServer() {
+  return model.state.serverProfiles?.find((s) => s.id === guildId());
+}
+function guildName() {
+  const fallback = model.config.guildId ? 'السيرفر المحدد' : 'اختر سيرفرك';
+  return (
+    inventory()?.guildName ||
+    savedServer()?.name ||
+    window.CortexI18n?.translate(fallback) ||
+    fallback
+  );
+}
+function colorHex(value) {
+  return (
+    '#' +
+    Math.max(0, Number(value) || 0)
+      .toString(16)
+      .padStart(6, '0')
+      .slice(-6)
+  );
+}
+function shortTime(value) {
+  try {
+    return new Date(value ?? Date.now()).toLocaleTimeString(
+      window.CortexI18n?.language === 'en' ? 'en-US' : 'ar-JO',
+      { hour: '2-digit', minute: '2-digit' },
+    );
+  } catch {
+    return 'الآن';
   }
-  model.editor={kind,action,item:item?structuredClone(item):null,values:kind==='guild'?{name:item?.name??''}:kind==='role'?{name:item?.name??'',color:item?.color??0,hoist:item?.hoist??false,mentionable:item?.mentionable??false}:{name:item?.name??'',type:item?.type??type,parent_id:item?.parent_id??null,topic:item?.topic??'',rate_limit_per_user:item?.rate_limit_per_user??0,user_limit:item?.user_limit??0},permissionChanges:{},overwriteChanges:{},approval:null};
-  model.editor.workspaceGuildId=guildId();lastSelections.set(guildId()+'|'+kind,item?.id??'new-'+type);model.reviewSignature=null;model.awaitingEdit=false;model.awaitingMessage=false;model.messageSignature=null;model.editor.messageContent='';model.editor.messageFormat='text';model.editor.messageJson='';model.editor.messageApproval=null;model.tab=kind==='role'&&item?'permissions':'general';model.overwriteRole='';restorePersistentEditor(model.editor);
 }
-function ensureEditor(kind){const inv=inventory();if(!inv||model.editor?.kind===kind)return;const list=kind==='role'?inv.roles:inv.channels,last=lastSelections.get(guildId()+'|'+kind);if(last?.startsWith('new-')){setEditor(kind,null,'create',Number(last.slice(4)));return;}setEditor(kind,list?.find(x=>x.id===last)??list?.find(x=>!x.readOnlyReason)??list?.[0]??null,list?.length?'update':'create');}
-function editorRequest(e=model.editor){if(!e)return null;const req={kind:e.kind,action:e.action,values:{}};if(e.item){req.id=e.item.id;req.revision=e.item.revision;}
-  if(e.kind==='guild'){req.values={name:e.values.name.trim()};}
-  else if(e.kind==='role'){req.values={name:e.values.name.trim(),color:Number(e.values.color),hoist:!!e.values.hoist,mentionable:!!e.values.mentionable};req.permissionChanges={...e.permissionChanges};}
-  else {const t=Number(e.values.type);req.values={name:e.values.name.trim(),parent_id:t===4?null:e.values.parent_id||null};if(e.action==='create')req.values.type=t;if(t===0){req.values.topic=e.values.topic;req.values.rate_limit_per_user=Number(e.values.rate_limit_per_user);}if(t===2)req.values.user_limit=Number(e.values.user_limit);req.overwriteChanges=Object.entries(e.overwriteChanges).map(([roleId,permissions])=>({roleId,permissions}));}
+function permissionLabel(name) {
+  return permissionNames[name] ?? name.replace(/([a-z])([A-Z])/g, '$1 $2');
+}
+function typeLabel(type) {
+  return { 0: 'قناة نصية', 2: 'قناة صوتية', 4: 'قسم' }[type] ?? 'قناة';
+}
+function typeIcon(type) {
+  return type === 2 ? 'voice' : type === 4 ? 'folder' : 'hash';
+}
+function toast(message, type = 'info') {
+  const node = document.createElement('div');
+  node.className = 'toast ' + type;
+  node.innerHTML = icon(type === 'success' ? 'check' : 'info') + `<span>${esc(message)}</span>`;
+  $('#toasts').append(node);
+  setTimeout(() => node.remove(), 6000);
+}
+// Session-only navigation state. No credentials or reviewed approvals are cached.
+const workspaceViews = new Map(),
+  editorDrafts = new Map(),
+  lastSelections = new Map();
+const draftStore = window.CortexDrafts.create(api, onDraftEvent);
+let renderedView = null,
+  renderedEditor = null,
+  renderedInspectorTab = null;
+function viewKey() {
+  return guildId() + '|' + model.page;
+}
+function editorKey(e) {
+  return e
+    ? (e.workspaceGuildId ?? guildId()) +
+        '|' +
+        e.kind +
+        '|' +
+        (e.item?.id ?? 'new-' + (e.values?.type ?? 0))
+    : null;
+}
+function sameEditorSource(a, b) {
+  return (
+    a?.revision === b?.revision &&
+    a?.readOnlyReason === b?.readOnlyReason &&
+    a?.messageReadOnlyReason === b?.messageReadOnlyReason &&
+    JSON.stringify(a?.flags) === JSON.stringify(b?.flags)
+  );
+}
+function rememberEditor() {
+  const e = model.editor;
+  if (!e) return;
+  const copy = structuredClone(e);
+  copy.approval = null;
+  copy.messageApproval = null;
+  const key = editorKey(e);
+  editorDrafts.delete(key);
+  editorDrafts.set(key, { editor: copy, tab: model.tab, overwriteRole: model.overwriteRole });
+  persistEditorDraft(e);
+  if (editorDrafts.size > 100) editorDrafts.delete(editorDrafts.keys().next().value);
+}
+function captureView() {
+  if (!renderedView) return null;
+  const state = workspaceViews.get(renderedView) ?? { groups: {}, inspectorScroll: {} };
+  state.windowY = window.scrollY;
+  const search = $('#entitySearch');
+  if (search) state.query = search.value;
+  const tree = $('#entityTree');
+  if (tree) {
+    state.treeScroll = tree.scrollTop;
+    $$('[data-category-id]', tree).forEach(
+      (group) => (state.groups[group.dataset.categoryId] = group.open),
+    );
+  }
+  const inspector = $('.inspector-body');
+  if (inspector && renderedEditor)
+    state.inspectorScroll[renderedEditor + '|' + (renderedInspectorTab ?? model.tab)] =
+      inspector.scrollTop;
+  workspaceViews.set(renderedView, state);
+  const focused = document.activeElement;
+  if (!focused || !$('#main').contains(focused)) return null;
+  const attribute = [
+    'data-entity-id',
+    'data-design-permission',
+    'data-role-view',
+    'data-role-color',
+    'data-overwrite',
+  ].find((name) => focused.hasAttribute(name));
+  const selector = focused.id
+    ? '#' + CSS.escape(focused.id)
+    : attribute
+      ? '[' + attribute + '="' + CSS.escape(focused.getAttribute(attribute)) + '"]'
+      : null;
+  return selector
+    ? {
+        view: renderedView,
+        editor: renderedEditor,
+        selector,
+        start: focused.selectionStart,
+        end: focused.selectionEnd,
+      }
+    : null;
+}
+function restoreView(key, focus) {
+  const state = workspaceViews.get(key),
+    tree = $('#entityTree');
+  if (tree) {
+    $$('[data-category-id]', tree).forEach((group) => {
+      if (state && Object.hasOwn(state.groups, group.dataset.categoryId))
+        group.open = state.groups[group.dataset.categoryId];
+    });
+    tree.scrollTop = state?.treeScroll ?? 0;
+  }
+  const inspector = $('.inspector-body');
+  if (inspector)
+    inspector.scrollTop = state?.inspectorScroll?.[editorKey(model.editor) + '|' + model.tab] ?? 0;
+  window.scrollTo(0, state?.windowY ?? 0);
+  if (
+    focus?.view === key &&
+    (focus.selector === '#entitySearch' ||
+      focus.editor === editorKey(model.editor) ||
+      focus.selector.startsWith('[data-entity-id='))
+  ) {
+    const input = $(focus.selector);
+    if (input && !input.disabled) {
+      input.focus({ preventScroll: true });
+      if (
+        typeof focus.start === 'number' &&
+        typeof input.setSelectionRange === 'function' &&
+        ['text', 'search', 'password', 'url', 'tel'].includes(input.type)
+      )
+        input.setSelectionRange(focus.start, focus.end);
+    }
+  }
+}
+function fitEntityLayout() {
+  const layout = $('.entity-layout');
+  if (layout)
+    layout.style.setProperty(
+      '--entity-top',
+      layout.getBoundingClientRect().top + window.scrollY + 'px',
+    );
+}
+function go(page) {
+  if (!titles[page] || page === model.page) return;
+  captureView();
+  rememberEditor();
+  model.page = page;
+  model.query = workspaceViews.get(viewKey())?.query ?? '';
+  render();
+  $('#main').focus({ preventScroll: true });
+}
+
+function setEditor(kind, item = null, action = 'update', type = 0) {
+  rememberEditor();
+  const key = editorKey({ kind, item, action, values: { type }, workspaceGuildId: guildId() }),
+    cached = editorDrafts.get(key);
+  if (
+    cached &&
+    (item ? sameEditorSource(cached.editor.item, item) : cached.editor.action === 'create')
+  ) {
+    model.editor = structuredClone(cached.editor);
+    model.editor.item = structuredClone(item);
+    model.editor.approval = null;
+    model.editor.messageApproval = null;
+    model.tab = cached.tab;
+    model.overwriteRole = cached.overwriteRole;
+    model.awaitingEdit = false;
+    model.awaitingMessage = false;
+    model.reviewSignature = null;
+    model.messageSignature = null;
+    lastSelections.set(guildId() + '|' + kind, item?.id ?? 'new-' + type);
+    return;
+  }
+  model.editor = {
+    kind,
+    action,
+    item: item ? structuredClone(item) : null,
+    values:
+      kind === 'guild'
+        ? { name: item?.name ?? '' }
+        : kind === 'role'
+          ? {
+              name: item?.name ?? '',
+              color: item?.color ?? 0,
+              hoist: item?.hoist ?? false,
+              mentionable: item?.mentionable ?? false,
+            }
+          : {
+              name: item?.name ?? '',
+              type: item?.type ?? type,
+              parent_id: item?.parent_id ?? null,
+              topic: item?.topic ?? '',
+              rate_limit_per_user: item?.rate_limit_per_user ?? 0,
+              user_limit: item?.user_limit ?? 0,
+            },
+    permissionChanges: {},
+    overwriteChanges: {},
+    approval: null,
+  };
+  model.editor.workspaceGuildId = guildId();
+  lastSelections.set(guildId() + '|' + kind, item?.id ?? 'new-' + type);
+  model.reviewSignature = null;
+  model.awaitingEdit = false;
+  model.awaitingMessage = false;
+  model.messageSignature = null;
+  model.editor.messageContent = '';
+  model.editor.messageFormat = 'text';
+  model.editor.messageJson = '';
+  model.editor.messageApproval = null;
+  model.tab = kind === 'role' && item ? 'permissions' : 'general';
+  model.overwriteRole = '';
+  restorePersistentEditor(model.editor);
+}
+function ensureEditor(kind) {
+  const inv = inventory();
+  if (!inv || model.editor?.kind === kind) return;
+  const list = kind === 'role' ? inv.roles : inv.channels,
+    last = lastSelections.get(guildId() + '|' + kind);
+  if (last?.startsWith('new-')) {
+    setEditor(kind, null, 'create', Number(last.slice(4)));
+    return;
+  }
+  setEditor(
+    kind,
+    list?.find((x) => x.id === last) ?? list?.find((x) => !x.readOnlyReason) ?? list?.[0] ?? null,
+    list?.length ? 'update' : 'create',
+  );
+}
+function editorRequest(e = model.editor) {
+  if (!e) return null;
+  const req = { kind: e.kind, action: e.action, values: {} };
+  if (e.item) {
+    req.id = e.item.id;
+    req.revision = e.item.revision;
+  }
+  if (e.kind === 'guild') {
+    req.values = { name: e.values.name.trim() };
+  } else if (e.kind === 'role') {
+    req.values = {
+      name: e.values.name.trim(),
+      color: Number(e.values.color),
+      hoist: !!e.values.hoist,
+      mentionable: !!e.values.mentionable,
+    };
+    req.permissionChanges = { ...e.permissionChanges };
+  } else {
+    const t = Number(e.values.type);
+    req.values = {
+      name: e.values.name.trim(),
+      parent_id: t === 4 ? null : e.values.parent_id || null,
+    };
+    if (e.action === 'create') req.values.type = t;
+    if (t === 0) {
+      req.values.topic = e.values.topic;
+      req.values.rate_limit_per_user = Number(e.values.rate_limit_per_user);
+    }
+    if (t === 2) req.values.user_limit = Number(e.values.user_limit);
+    req.overwriteChanges = Object.entries(e.overwriteChanges).map(([roleId, permissions]) => ({
+      roleId,
+      permissions,
+    }));
+  }
   return req;
 }
-function workspaceKey(request){return request.kind+':'+(request.id??'new-'+(request.values.type??0));}
-function requestDirty(request,item){
- if(!item)return !!request.values.name||!!Object.keys(request.permissionChanges??{}).length;
- if(Object.keys(request.permissionChanges??{}).length||request.overwriteChanges?.some(c=>Object.keys(c.permissions).length))return true;
- return Object.entries(request.values).some(([key,value])=>{const fallback=key==='parent_id'?null:['color','rate_limit_per_user','user_limit'].includes(key)?0:['hoist','mentionable'].includes(key)?false:'';return JSON.stringify(value)!==JSON.stringify(item[key]??fallback);});
+function workspaceKey(request) {
+  return request.kind + ':' + (request.id ?? 'new-' + (request.values.type ?? 0));
 }
-function persistEditorDraft(e=model.editor){
- if(!e||e.item?.readOnlyReason)return;
- const id=e.workspaceGuildId??guildId();if(!/^\d{16,22}$/.test(id))return;
- const request=editorRequest(e),key=workspaceKey(request),existing=draftStore.get(id,key);
- if(existing&&e.item&&existing.request.revision!==e.item.revision){e.draftConflict=requestDirty(request,e.item);if(e.draftConflict&&!e.conflictNotified){e.conflictNotified=true;toast('توجد مسودة أقدم لهذا العنصر. راجعها في مساحة التغييرات قبل استبدالها.','error');}updateDraftIndicators();return;}
- e.draftConflict=false;
- if(!requestDirty(request,e.item)){if(existing)draftStore.remove(id,key);return;}
- draftStore.put(id,{key,request,tab:model.tab==='permissions'?'permissions':'general',overwriteRole:model.overwriteRole??'',staged:existing?.staged??false});
- updateDraftIndicators();
+function requestDirty(request, item) {
+  if (!item) return !!request.values.name || !!Object.keys(request.permissionChanges ?? {}).length;
+  if (
+    Object.keys(request.permissionChanges ?? {}).length ||
+    request.overwriteChanges?.some((c) => Object.keys(c.permissions).length)
+  )
+    return true;
+  return Object.entries(request.values).some(([key, value]) => {
+    const fallback =
+      key === 'parent_id'
+        ? null
+        : ['color', 'rate_limit_per_user', 'user_limit'].includes(key)
+          ? 0
+          : ['hoist', 'mentionable'].includes(key)
+            ? false
+            : '';
+    return JSON.stringify(value) !== JSON.stringify(item[key] ?? fallback);
+  });
 }
-function restorePersistentEditor(e){
- if(!e||e.item?.readOnlyReason)return false;
- const entry=draftStore.get(e.workspaceGuildId??guildId(),workspaceKey(editorRequest(e)));if(!entry||e.item&&entry.request.revision!==e.item.revision)return false;
- e.values={...e.values,...structuredClone(entry.request.values)};e.permissionChanges=structuredClone(entry.request.permissionChanges??{});e.overwriteChanges=Object.fromEntries((entry.request.overwriteChanges??[]).map(c=>[c.roleId,structuredClone(c.permissions)]));model.tab=entry.tab;model.overwriteRole=entry.overwriteRole;return true;
-}
-function onDraftEvent(id,type){
- if(type==='changed'){model.batchSignature=null;model.state.batchPreview=null;}
- if(id!==guildId())return;
- if(type==='loaded'){
-  if(model.editor&&!requestDirty(editorRequest(),model.editor.item))restorePersistentEditor(model.editor);
-  if(['changes','channels','roles','profile'].includes(model.page))render();
- }
- updateDraftIndicators();
-}
-function updateDraftIndicators(){
- const id=guildId();if(!/^\d{16,22}$/.test(id))return;
- const info=draftStore.info(id),count=draftStore.list(id).filter(e=>e.staged).length,node=$('#changeCountNav');if(node)node.textContent=String(count);
- const labels={loading:'جارٍ استعادة المسودات…',pending:'تغييرات بانتظار الحفظ…',saving:'جارٍ حفظ المسودات…',saved:'المسودات محفوظة تلقائيًا',error:'تعذّر حفظ أو استعادة المسودات'};
- for(const label of $$('#autoDraftState,#workspaceSaveStatus')){label.textContent=labels[info.status]??labels.pending;label.dataset.saveState=info.status;label.title=info.error||'';if(model.editor?.draftConflict&&label.id==='autoDraftState'){label.textContent='مسودة متعارضة؛ راجع مساحة التغييرات';label.dataset.saveState='error';}}
- const stage=$('#stageEditorChange');if(stage)stage.disabled=busy()||!model.editor||!requestDirty(editorRequest(),model.editor.item)||model.editor.draftConflict;
-}
-function bindWorkspaceEditor(e){
- const actions=$('.entityInspector .editor-actions')??$('#entityInspector .editor-actions')??$('.inspector .editor-actions')??$('.guild-profile-panel .editor-actions');if(!actions||e.action!=='update'||e.item?.readOnlyReason)return;
- actions.insertAdjacentHTML('afterbegin',button('إضافة للمراجعة','stageEditorChange','btn-ghost','plus',busy()||!requestDirty(editorRequest(),e.item)));
- const note=$('.inspector-footer .save-note');if(note)note.insertAdjacentHTML('beforeend','<small class="auto-draft-state" id="autoDraftState"></small>');
- $('#stageEditorChange').onclick=()=>{
-  if(!validateEditor()||e.draftConflict)return;if(!e.values.name.trim()){toast('أدخل اسم العنصر أولًا.');$('#editName')?.focus();return;}if(draftStore.list(guildId()).filter(entry=>entry.staged).length>=25&&!draftStore.get(guildId(),workspaceKey(editorRequest(e)))?.staged){toast('يمكن مراجعة 25 تعديلًا في الخطة الواحدة.','error');return;}persistEditorDraft(e);const key=workspaceKey(editorRequest(e)),entry=draftStore.get(guildId(),key);if(!entry)return;
-  draftStore.put(guildId(),{...entry,staged:true});toast('أُضيف التعديل إلى مساحة التغييرات للمراجعة.','success');updateDraftIndicators();
- };
- updateDraftIndicators();
-}
-function invalidate(){persistEditorDraft();if(model.editor)model.editor.approval=null;model.reviewSignature=null;model.awaitingEdit=false;const button=$('#applyEdit');if(button)button.disabled=true;const label=$('#draftStatus');if(label)label.textContent=model.state.demo?'وضع العرض · الحفظ الحقيقي معطّل':'مسودة محلية · راجع التعديل قبل الحفظ';const box=$('#editReview');if(box)box.remove();}
-
-async function api(path,body,options={}){const response=await fetch(path,{method:body?'POST':'GET',headers:{'X-Cortex-Key':apiKey,...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined,cache:'no-store',keepalive:!!options.keepalive});let data;try{data=await response.json();}catch{throw new Error('تعذّر قراءة استجابة الخدمة المحلية.');}if(!response.ok)throw new Error(data.error??data.message??'تعذّرت العملية المحلية.');return data;}
-async function action(name,extra={}){
-  if(busy())return;if(!['stop','shutdown','client-closed','credentials-forget'].includes(name)&&!model.state.demo&&(!(model.config.token||model.state.hasCredentials)||!/^\d{16,22}$/.test(guildId()))){toast('أدخل توكن البوت ورقم السيرفر أولًا.');go('settings');return;}
-  model.requestEpoch=(model.requestEpoch??0)+1;model.postInFlight=true;model.pending=true;model.runningAction=name;if(['edit-apply','message-send'].includes(name))model.operationEditorKey=model.page==='social'?null:editorKey(model.editor);if(name==='edit-apply'&&!model.moveDraft&&model.editor){model.operationWorkspaceKey=workspaceKey(editorRequest());model.operationWorkspaceGuild=guildId();}model.state.error=null;model.localError=null;render();
-  try{await api('/api/action',{action:name,config:{...(model.config.token?{token:model.config.token}:{}),guildId:guildId(),...extra}});model.postInFlight=false;model.credentialsDirty=false;await pollState(true);}
-  catch(error){if(model.moveDraft&&['edit-preview','edit-apply'].includes(name)){model.moveDraft.pending=false;model.moveDraft.applying=false;model.moveDraft.plan=null;renderMoveDialog(error.message);}if(name==='role-grant-preview'&&model.grantDraft){model.grantDraft.pending=false;if($('#confirmDialog').open&&$('#grantMemberId'))renderRoleGrantDialog(error.message);}if(name==='message-preview')model.awaitingMessage=false;model.postInFlight=false;model.pending=false;model.runningAction=null;model.localError=error.message;toast(error.message,'error');render();}
-}
-async function pollState(force=false){if(polling||model.postInFlight)return;polling=true;const epoch=model.requestEpoch??0;try{
-  const data=await api('/api/state');if(epoch!==(model.requestEpoch??0)||model.postInFlight)return;const previous=model.state,hadPending=model.pending;if(data.preview&&model.previewDesignSignature!==JSON.stringify(window.CortexDesigner?.current(guildId())))data.preview=null;model.state=data;if(!model.loaded&&!model.config.guildId&&data.guildId)model.config.guildId=String(data.guildId);model.pending=false;model.connectionError=false;
-  const inv=inventory();if(!model.config.guildId&&inv?.guildId)model.config.guildId=String(inv.guildId);
-  if(/^\d{16,22}$/.test(guildId())){const info=draftStore.info(guildId());if(!info.loaded&&info.status!=='error')draftStore.load(guildId()).catch(()=>{});}
-  window.CortexWorkbench.handleResult(data);
-  const rawInventory=data.inventory??data.diagnostics?.inventory;
-  const invSignature=rawInventory?JSON.stringify(rawInventory):'';
-  const reportSignature=(data.reports?.files??[]).map(file=>file.name+':'+file.size).join('|');if(!data.busy){if(model.loaded&&model.lastReports!==undefined&&model.lastReports!==reportSignature&&reportSignature)toast('توجد تقارير جديدة جاهزة للتنزيل في سجل النشاط.','success');model.lastReports=reportSignature;}
-  let focusMessageReview=false;let refresh=force||hadPending||previous.credentialsSaved!==data.credentialsSaved||previous.hasCredentials!==data.hasCredentials||previous.guildId!==data.guildId||JSON.stringify(previous.serverProfiles)!==JSON.stringify(data.serverProfiles)||!model.loaded||previous.busy!==data.busy||model.lastInventory!==invSignature||previous.error!==data.error;
-  if(model.lastInventory&&model.lastInventory!==invSignature&&model.editor?.item){const fresh=(model.editor.kind==='guild'?[inv?.guildProfile]:model.editor.kind==='role'?inv?.roles:inv?.channels)?.find(x=>x?.id===model.editor.item.id);if(fresh&&(fresh.revision!==model.editor.item.revision||fresh.readOnlyReason!==model.editor.item.readOnlyReason||fresh.messageReadOnlyReason!==model.editor.item.messageReadOnlyReason||JSON.stringify(fresh.flags)!==JSON.stringify(model.editor.item.flags))){const kind=model.editor.kind;setEditor(kind,fresh);toast('تم تحديث العنصر من السيرفر. راجع القيم الحالية.');}else if(!fresh){model.editor=null;}}
-  model.lastInventory=invSignature;
-  if(model.moveDraft?.pending&&!data.busy){const d=model.moveDraft;d.pending=false;d.plan=data.editPreview?.move&&!data.error?data.editPreview:null;refresh=true;if($('#confirmDialog').open)renderMoveDialog(data.error??'');}
-  if(model.moveDraft?.applying&&!data.busy&&data.error){model.moveDraft.applying=false;model.moveDraft.plan=null;renderMoveDialog(data.error);}
-  if(model.awaitingEdit&&!data.busy&&data.editPreview){const signature=JSON.stringify(editorRequest());if(signature===model.reviewSignature){model.editor.approval=data.editPreview;model.lastEditHash=data.editPreview.approvalHash;model.awaitingEdit=false;refresh=true;}}
-  if(model.awaitingEdit&&!data.busy&&data.error){model.awaitingEdit=false;refresh=true;}
-  if(model.awaitingMessage&&!data.busy&&data.messagePreview&&model.editor?.item){const e=model.editor,p=data.messagePreview;if(model.messageSignature===JSON.stringify(botMessageRequest(e))&&p.channelId===e.item.id){e.messageApproval=p;model.awaitingMessage=false;refresh=true;focusMessageReview=true;}}
-  if(model.awaitingMessage&&!data.busy&&data.error){model.awaitingMessage=false;refresh=true;}
-  if(model.grantDraft?.pending&&!data.busy&&$('#confirmDialog').open&&$('#grantMemberId')){const d=model.grantDraft,p=data.roleGrantPreview;d.pending=false;if(p&&p.guildId===d.guildId&&p.roleId===d.roleId&&p.memberId===d.memberId)d.plan=p;renderRoleGrantDialog(data.error??'');}
-  const stateSignature=JSON.stringify([data.batchPreview?.approvalHash,data.batchResult?.status,data.simulation?.capturedAt,data.preview?.approvalHash,data.preview?.summary,data.editPreview?.approvalHash,data.roleGrantPreview?.approvalHash,data.messagePreview?.approvalHash,data.messageResult?.status,data.operation]);if(model.lastStateSignature!==stateSignature){refresh=true;model.lastStateSignature=stateSignature;}
-  if(!model.loaded||!previous.error&&data.error) {if(data.error)toast(typeof data.error==='string'?data.error:data.error.message??'تعذّرت العملية.','error');}
-  if(!data.busy&&(previous.busy||model.runningAction)){const op=model.runningAction??(typeof previous.operation==='string'?previous.operation:previous.operation?.action);model.runningAction=null;if(!data.error){if(op==='credentials-save'){model.config.token='';model.savedDraftDirty=false;toast('تم حفظ التوكن ورقم السيرفر بتشفير ويندوز.','success');}else if(op==='credentials-forget'){model.savedDraftDirty=false;toast('تم حذف البيانات المحفوظة. بيانات الجلسة تبقى حتى إغلاق البرنامج.','success');}else if(op==='message-send'){const cached=editorDrafts.get(model.operationEditorKey)?.editor;if(cached){cached.messageContent='';cached.messageJson='';cached.messageApproval=null;}if(model.editor&&editorKey(model.editor)===model.operationEditorKey){model.editor.messageContent='';model.editor.messageJson='';model.editor.messageApproval=null;}toast('تم إرسال الرسالة باسم البوت.','success');}else if(op==='role-grant-apply'){model.grantDraft=null;toast('تم منح الرتبة للعضو المحدد.','success');setTimeout(()=>action('inventory'),80);}else if(op==='edit-apply'&&model.moveDraft?.applying){model.moveDraft=null;invalidate();toast('تم حفظ النقل. جارٍ تحديث ترتيب السيرفر.','success');setTimeout(()=>action('inventory'),80);}else if(op==='edit-apply'){if(model.operationWorkspaceKey)draftStore.remove(model.operationWorkspaceGuild,model.operationWorkspaceKey);editorDrafts.delete(model.operationEditorKey);if(editorKey(model.editor)===model.operationEditorKey)model.editor=null;toast('تم حفظ التعديل. جارٍ تحديث بيانات السيرفر.','success');setTimeout(()=>action('inventory'),80);}else if(op==='check'||op==='inventory'||op==='connect')toast(model.state.demo?'تم تحديث بيانات العرض التوضيحي.':'تم تحديث بيانات السيرفر بنجاح.','success');}}
-  model.loaded=true;updateChrome();if(refresh)render();else if(model.page==='logs')renderLogsOnly();else if(model.page==='settings'&&(previous.presenceActive!==data.presenceActive||previous.presence?.status!==data.presence?.status||previous.presenceStartedAt!==data.presenceStartedAt))render();
-  if(focusMessageReview&&model.tab==='messages')$('#messageReview')?.focus();
- }catch(error){model.pending=false;if(!model.connectionError){model.connectionError=true;if(!model.loaded){model.loaded=true;render();toast('تعذّر الاتصال بالخدمة المحلية. افتح CortexManager.exe مجددًا.','error');}}}finally{polling=false;}}
-
-function sidebarBotStatus(){
-  const status=model.state.presence?.status;
-  if(model.state.demo)return {text:'معاينة توضيحية',tone:'offline'};
-  if(status==='disconnecting'||model.runningAction==='stop'&&busy())return {text:'جارٍ إيقاف البوت…',tone:'pending'};
-  if(online())return {text:'البوت متصل',tone:'online'};
-  if(status==='reconnecting')return {text:'جارٍ إعادة اتصال البوت…',tone:'pending'};
-  if(status==='connecting'||model.runningAction==='connect'&&busy())return {text:'جارٍ تشغيل البوت…',tone:'pending'};
-  if(status==='error')return {text:'تعذّر اتصال البوت',tone:'error'};
-  return {text:'البوت غير متصل',tone:'offline'};
-}
-function updateChrome(){
-  const botStatus=sidebarBotStatus();
-  $('#sidebarGuildName').textContent=guildName();paintGuildAvatar($('#guildAvatar'),inventory()?.guildProfile??savedServer());$('#serverSwitch').title=inventory()?'تخصيص السيرفر':'إعداد الاتصال';$('#sidebarGuildId').textContent=botStatus.text;$('#sidebarGuildId').dataset.botStatus=botStatus.tone;$('#serverSwitch').classList.toggle('server-loaded',botStatus.tone==='online');
+function persistEditorDraft(e = model.editor) {
+  if (!e || e.item?.readOnlyReason) return;
+  const id = e.workspaceGuildId ?? guildId();
+  if (!/^\d{16,22}$/.test(id)) return;
+  const request = editorRequest(e),
+    key = workspaceKey(request),
+    existing = draftStore.get(id, key);
+  if (existing && e.item && existing.request.revision !== e.item.revision) {
+    e.draftConflict = requestDirty(request, e.item);
+    if (e.draftConflict && !e.conflictNotified) {
+      e.conflictNotified = true;
+      toast('توجد مسودة أقدم لهذا العنصر. راجعها في مساحة التغييرات قبل استبدالها.', 'error');
+    }
+    updateDraftIndicators();
+    return;
+  }
+  e.draftConflict = false;
+  if (!requestDirty(request, e.item)) {
+    if (existing) draftStore.remove(id, key);
+    return;
+  }
+  draftStore.put(id, {
+    key,
+    request,
+    tab: model.tab === 'permissions' ? 'permissions' : 'general',
+    overwriteRole: model.overwriteRole ?? '',
+    staged: existing?.staged ?? false,
+  });
   updateDraftIndicators();
-  const inv=inventory();$('#channelCountNav').textContent=inv?.channels.filter(c=>c.type!==4).length??'—';$('#roleCountNav').textContent=inv?.roles.length??'—';$('#demoBadge').classList.toggle('hidden',!model.state.demo);
+}
+function restorePersistentEditor(e) {
+  if (!e || e.item?.readOnlyReason) return false;
+  const entry = draftStore.get(e.workspaceGuildId ?? guildId(), workspaceKey(editorRequest(e)));
+  if (!entry || (e.item && entry.request.revision !== e.item.revision)) return false;
+  e.values = { ...e.values, ...structuredClone(entry.request.values) };
+  e.permissionChanges = structuredClone(entry.request.permissionChanges ?? {});
+  e.overwriteChanges = Object.fromEntries(
+    (entry.request.overwriteChanges ?? []).map((c) => [c.roleId, structuredClone(c.permissions)]),
+  );
+  model.tab = entry.tab;
+  model.overwriteRole = entry.overwriteRole;
+  return true;
+}
+function onDraftEvent(id, type) {
+  if (type === 'changed') {
+    model.batchSignature = null;
+    model.state.batchPreview = null;
+  }
+  if (id !== guildId()) return;
+  if (type === 'loaded') {
+    if (model.editor && !requestDirty(editorRequest(), model.editor.item))
+      restorePersistentEditor(model.editor);
+    if (['changes', 'channels', 'roles', 'profile'].includes(model.page)) render();
+  }
+  updateDraftIndicators();
+}
+function updateDraftIndicators() {
+  const id = guildId();
+  if (!/^\d{16,22}$/.test(id)) return;
+  const info = draftStore.info(id),
+    count = draftStore.list(id).filter((e) => e.staged).length,
+    node = $('#changeCountNav');
+  if (node) node.textContent = String(count);
+  const labels = {
+    loading: 'جارٍ استعادة المسودات…',
+    pending: 'تغييرات بانتظار الحفظ…',
+    saving: 'جارٍ حفظ المسودات…',
+    saved: 'المسودات محفوظة تلقائيًا',
+    error: 'تعذّر حفظ أو استعادة المسودات',
+  };
+  for (const label of $$('#autoDraftState,#workspaceSaveStatus')) {
+    label.textContent = labels[info.status] ?? labels.pending;
+    label.dataset.saveState = info.status;
+    label.title = info.error || '';
+    if (model.editor?.draftConflict && label.id === 'autoDraftState') {
+      label.textContent = 'مسودة متعارضة؛ راجع مساحة التغييرات';
+      label.dataset.saveState = 'error';
+    }
+  }
+  const stage = $('#stageEditorChange');
+  if (stage)
+    stage.disabled =
+      busy() ||
+      !model.editor ||
+      !requestDirty(editorRequest(), model.editor.item) ||
+      model.editor.draftConflict;
+}
+function bindWorkspaceEditor(e) {
+  const actions =
+    $('.entityInspector .editor-actions') ??
+    $('#entityInspector .editor-actions') ??
+    $('.inspector .editor-actions') ??
+    $('.guild-profile-panel .editor-actions');
+  if (!actions || e.action !== 'update' || e.item?.readOnlyReason) return;
+  actions.insertAdjacentHTML(
+    'afterbegin',
+    button(
+      'إضافة للمراجعة',
+      'stageEditorChange',
+      'btn-ghost',
+      'plus',
+      busy() || !requestDirty(editorRequest(), e.item),
+    ),
+  );
+  const note = $('.inspector-footer .save-note');
+  if (note)
+    note.insertAdjacentHTML(
+      'beforeend',
+      '<small class="auto-draft-state" id="autoDraftState"></small>',
+    );
+  $('#stageEditorChange').onclick = () => {
+    if (!validateEditor() || e.draftConflict) return;
+    if (!e.values.name.trim()) {
+      toast('أدخل اسم العنصر أولًا.');
+      $('#editName')?.focus();
+      return;
+    }
+    if (
+      draftStore.list(guildId()).filter((entry) => entry.staged).length >= 25 &&
+      !draftStore.get(guildId(), workspaceKey(editorRequest(e)))?.staged
+    ) {
+      toast('يمكن مراجعة 25 تعديلًا في الخطة الواحدة.', 'error');
+      return;
+    }
+    persistEditorDraft(e);
+    const key = workspaceKey(editorRequest(e)),
+      entry = draftStore.get(guildId(), key);
+    if (!entry) return;
+    draftStore.put(guildId(), { ...entry, staged: true });
+    toast('أُضيف التعديل إلى مساحة التغييرات للمراجعة.', 'success');
+    updateDraftIndicators();
+  };
+  updateDraftIndicators();
+}
+function invalidate() {
+  persistEditorDraft();
+  if (model.editor) model.editor.approval = null;
+  model.reviewSignature = null;
+  model.awaitingEdit = false;
+  const button = $('#applyEdit');
+  if (button) button.disabled = true;
+  const label = $('#draftStatus');
+  if (label)
+    label.textContent = model.state.demo
+      ? 'وضع العرض · الحفظ الحقيقي معطّل'
+      : 'مسودة محلية · راجع التعديل قبل الحفظ';
+  const box = $('#editReview');
+  if (box) box.remove();
+}
 
-  let bar=$('.loading-bar');if(busy()&&!bar){bar=document.createElement('div');bar.className='loading-bar';document.body.append(bar);}if(!busy()&&bar)bar.remove();
+async function api(path, body, options = {}) {
+  const response = await fetch(path, {
+    method: body ? 'POST' : 'GET',
+    headers: { 'X-Cortex-Key': apiKey, ...(body ? { 'Content-Type': 'application/json' } : {}) },
+    body: body ? JSON.stringify(body) : undefined,
+    cache: 'no-store',
+    keepalive: !!options.keepalive,
+  });
+  let data;
+  try {
+    data = await response.json();
+  } catch {
+    throw new Error('تعذّر قراءة استجابة الخدمة المحلية.');
+  }
+  if (!response.ok) throw new Error(data.error ?? data.message ?? 'تعذّرت العملية المحلية.');
+  return data;
 }
-function heading(title,description,eyebrow,actions=''){return `<div class="page-heading"><div><div class="page-eyebrow">${esc(eyebrow)}</div><h1>${title}</h1><p>${description}</p></div><div class="heading-actions">${actions}</div></div>`;}
-function button(label,id,style='btn-ghost',name='',disabled=false){return `<button class="btn ${style}" id="${id}" ${disabled?'disabled':''}>${name?icon(name):''}<span>${esc(label)}</span></button>`;}
-function panelTitle(title,subtitle,name,link=''){return `<div class="panel-header"><div class="panel-title"><span>${icon(name)}</span><div><h2>${title}</h2>${subtitle?`<small>${subtitle}</small>`:''}</div></div>${link}</div>`;}
-function noInventory(kind='server'){return `<section class="panel empty-state"><div class="empty-illustration">${icon(kind==='roles'?'shield':kind==='channels'?'hash':'link')}</div><h2>سيرفرك… في مكان واحد</h2><p>اربط البوت بسيرفرك لعرض الأقسام والقنوات والرتب الحالية، ثم عدّل كل عنصر بمعاينة واضحة قبل الحفظ.</p>${button('إعداد الاتصال','emptyConnect','btn-primary','link')}</section>`;}
-function bindEmpty(){const b=$('#emptyConnect');if(b)b.onclick=()=>go('settings');}
+async function action(name, extra = {}) {
+  if (busy()) return;
+  if (
+    !['stop', 'shutdown', 'client-closed', 'credentials-forget'].includes(name) &&
+    !model.state.demo &&
+    (!(model.config.token || model.state.hasCredentials) || !/^\d{16,22}$/.test(guildId()))
+  ) {
+    toast('أدخل توكن البوت ورقم السيرفر أولًا.');
+    go('settings');
+    return;
+  }
+  model.requestEpoch = (model.requestEpoch ?? 0) + 1;
+  model.postInFlight = true;
+  model.pending = true;
+  model.runningAction = name;
+  if (['edit-apply', 'message-send'].includes(name))
+    model.operationEditorKey = model.page === 'social' ? null : editorKey(model.editor);
+  if (name === 'edit-apply' && !model.moveDraft && model.editor) {
+    model.operationWorkspaceKey = workspaceKey(editorRequest());
+    model.operationWorkspaceGuild = guildId();
+  }
+  model.state.error = null;
+  model.localError = null;
+  render();
+  try {
+    await api('/api/action', {
+      action: name,
+      config: {
+        ...(model.config.token ? { token: model.config.token } : {}),
+        guildId: guildId(),
+        ...extra,
+      },
+    });
+    model.postInFlight = false;
+    model.credentialsDirty = false;
+    await pollState(true);
+  } catch (error) {
+    if (model.moveDraft && ['edit-preview', 'edit-apply'].includes(name)) {
+      model.moveDraft.pending = false;
+      model.moveDraft.applying = false;
+      model.moveDraft.plan = null;
+      renderMoveDialog(error.message);
+    }
+    if (name === 'role-grant-preview' && model.grantDraft) {
+      model.grantDraft.pending = false;
+      if ($('#confirmDialog').open && $('#grantMemberId')) renderRoleGrantDialog(error.message);
+    }
+    if (name === 'message-preview') model.awaitingMessage = false;
+    model.postInFlight = false;
+    model.pending = false;
+    model.runningAction = null;
+    model.localError = error.message;
+    toast(error.message, 'error');
+    render();
+  }
+}
+async function pollState(force = false) {
+  if (polling || model.postInFlight) return;
+  polling = true;
+  const epoch = model.requestEpoch ?? 0;
+  try {
+    const data = await api('/api/state');
+    if (epoch !== (model.requestEpoch ?? 0) || model.postInFlight) return;
+    const previous = model.state,
+      hadPending = model.pending;
+    if (
+      data.preview &&
+      model.previewDesignSignature !== JSON.stringify(window.CortexDesigner?.current(guildId()))
+    )
+      data.preview = null;
+    model.state = data;
+    if (!model.loaded && !model.config.guildId && data.guildId)
+      model.config.guildId = String(data.guildId);
+    model.pending = false;
+    model.connectionError = false;
+    const inv = inventory();
+    if (!model.config.guildId && inv?.guildId) model.config.guildId = String(inv.guildId);
+    if (/^\d{16,22}$/.test(guildId())) {
+      const info = draftStore.info(guildId());
+      if (!info.loaded && info.status !== 'error') draftStore.load(guildId()).catch(() => {});
+    }
+    window.CortexWorkbench.handleResult(data);
+    const rawInventory = data.inventory ?? data.diagnostics?.inventory;
+    const invSignature = rawInventory ? JSON.stringify(rawInventory) : '';
+    const reportSignature = (data.reports?.files ?? [])
+      .map((file) => file.name + ':' + file.size)
+      .join('|');
+    if (!data.busy) {
+      if (
+        model.loaded &&
+        model.lastReports !== undefined &&
+        model.lastReports !== reportSignature &&
+        reportSignature
+      )
+        toast('توجد تقارير جديدة جاهزة للتنزيل في سجل النشاط.', 'success');
+      model.lastReports = reportSignature;
+    }
+    let focusMessageReview = false;
+    let refresh =
+      force ||
+      hadPending ||
+      previous.credentialsSaved !== data.credentialsSaved ||
+      previous.hasCredentials !== data.hasCredentials ||
+      previous.guildId !== data.guildId ||
+      JSON.stringify(previous.serverProfiles) !== JSON.stringify(data.serverProfiles) ||
+      !model.loaded ||
+      previous.busy !== data.busy ||
+      model.lastInventory !== invSignature ||
+      previous.error !== data.error;
+    if (model.lastInventory && model.lastInventory !== invSignature && model.editor?.item) {
+      const fresh = (
+        model.editor.kind === 'guild'
+          ? [inv?.guildProfile]
+          : model.editor.kind === 'role'
+            ? inv?.roles
+            : inv?.channels
+      )?.find((x) => x?.id === model.editor.item.id);
+      if (
+        fresh &&
+        (fresh.revision !== model.editor.item.revision ||
+          fresh.readOnlyReason !== model.editor.item.readOnlyReason ||
+          fresh.messageReadOnlyReason !== model.editor.item.messageReadOnlyReason ||
+          JSON.stringify(fresh.flags) !== JSON.stringify(model.editor.item.flags))
+      ) {
+        const kind = model.editor.kind;
+        setEditor(kind, fresh);
+        toast('تم تحديث العنصر من السيرفر. راجع القيم الحالية.');
+      } else if (!fresh) {
+        model.editor = null;
+      }
+    }
+    model.lastInventory = invSignature;
+    if (model.moveDraft?.pending && !data.busy) {
+      const d = model.moveDraft;
+      d.pending = false;
+      d.plan = data.editPreview?.move && !data.error ? data.editPreview : null;
+      refresh = true;
+      if ($('#confirmDialog').open) renderMoveDialog(data.error ?? '');
+    }
+    if (model.moveDraft?.applying && !data.busy && data.error) {
+      model.moveDraft.applying = false;
+      model.moveDraft.plan = null;
+      renderMoveDialog(data.error);
+    }
+    if (model.awaitingEdit && !data.busy && data.editPreview) {
+      const signature = JSON.stringify(editorRequest());
+      if (signature === model.reviewSignature) {
+        model.editor.approval = data.editPreview;
+        model.lastEditHash = data.editPreview.approvalHash;
+        model.awaitingEdit = false;
+        refresh = true;
+      }
+    }
+    if (model.awaitingEdit && !data.busy && data.error) {
+      model.awaitingEdit = false;
+      refresh = true;
+    }
+    if (model.awaitingMessage && !data.busy && data.messagePreview && model.editor?.item) {
+      const e = model.editor,
+        p = data.messagePreview;
+      if (
+        model.messageSignature === JSON.stringify(botMessageRequest(e)) &&
+        p.channelId === e.item.id
+      ) {
+        e.messageApproval = p;
+        model.awaitingMessage = false;
+        refresh = true;
+        focusMessageReview = true;
+      }
+    }
+    if (model.awaitingMessage && !data.busy && data.error) {
+      model.awaitingMessage = false;
+      refresh = true;
+    }
+    if (
+      model.grantDraft?.pending &&
+      !data.busy &&
+      $('#confirmDialog').open &&
+      $('#grantMemberId')
+    ) {
+      const d = model.grantDraft,
+        p = data.roleGrantPreview;
+      d.pending = false;
+      if (p && p.guildId === d.guildId && p.roleId === d.roleId && p.memberId === d.memberId)
+        d.plan = p;
+      renderRoleGrantDialog(data.error ?? '');
+    }
+    const stateSignature = JSON.stringify([
+      data.batchPreview?.approvalHash,
+      data.batchResult?.status,
+      data.simulation?.capturedAt,
+      data.preview?.approvalHash,
+      data.preview?.summary,
+      data.editPreview?.approvalHash,
+      data.roleGrantPreview?.approvalHash,
+      data.messagePreview?.approvalHash,
+      data.messageResult?.status,
+      data.operation,
+    ]);
+    if (model.lastStateSignature !== stateSignature) {
+      refresh = true;
+      model.lastStateSignature = stateSignature;
+    }
+    if (!model.loaded || (!previous.error && data.error)) {
+      if (data.error)
+        toast(
+          typeof data.error === 'string' ? data.error : (data.error.message ?? 'تعذّرت العملية.'),
+          'error',
+        );
+    }
+    if (!data.busy && (previous.busy || model.runningAction)) {
+      const op =
+        model.runningAction ??
+        (typeof previous.operation === 'string' ? previous.operation : previous.operation?.action);
+      model.runningAction = null;
+      if (!data.error) {
+        if (op === 'credentials-save') {
+          model.config.token = '';
+          model.savedDraftDirty = false;
+          toast('تم حفظ التوكن ورقم السيرفر بتشفير ويندوز.', 'success');
+        } else if (op === 'credentials-forget') {
+          model.savedDraftDirty = false;
+          toast('تم حذف البيانات المحفوظة. بيانات الجلسة تبقى حتى إغلاق البرنامج.', 'success');
+        } else if (op === 'message-send') {
+          const cached = editorDrafts.get(model.operationEditorKey)?.editor;
+          if (cached) {
+            cached.messageContent = '';
+            cached.messageJson = '';
+            cached.messageApproval = null;
+          }
+          if (model.editor && editorKey(model.editor) === model.operationEditorKey) {
+            model.editor.messageContent = '';
+            model.editor.messageJson = '';
+            model.editor.messageApproval = null;
+          }
+          toast('تم إرسال الرسالة باسم البوت.', 'success');
+        } else if (op === 'role-grant-apply') {
+          model.grantDraft = null;
+          toast('تم منح الرتبة للعضو المحدد.', 'success');
+          setTimeout(() => action('inventory'), 80);
+        } else if (op === 'edit-apply' && model.moveDraft?.applying) {
+          model.moveDraft = null;
+          invalidate();
+          toast('تم حفظ النقل. جارٍ تحديث ترتيب السيرفر.', 'success');
+          setTimeout(() => action('inventory'), 80);
+        } else if (op === 'edit-apply') {
+          if (model.operationWorkspaceKey)
+            draftStore.remove(model.operationWorkspaceGuild, model.operationWorkspaceKey);
+          editorDrafts.delete(model.operationEditorKey);
+          if (editorKey(model.editor) === model.operationEditorKey) model.editor = null;
+          toast('تم حفظ التعديل. جارٍ تحديث بيانات السيرفر.', 'success');
+          setTimeout(() => action('inventory'), 80);
+        } else if (op === 'check' || op === 'inventory' || op === 'connect')
+          toast(
+            model.state.demo ? 'تم تحديث بيانات العرض التوضيحي.' : 'تم تحديث بيانات السيرفر بنجاح.',
+            'success',
+          );
+      }
+    }
+    model.loaded = true;
+    updateChrome();
+    if (refresh) render();
+    else if (model.page === 'logs') renderLogsOnly();
+    else if (
+      model.page === 'settings' &&
+      (previous.presenceActive !== data.presenceActive ||
+        previous.presence?.status !== data.presence?.status ||
+        previous.presenceStartedAt !== data.presenceStartedAt)
+    )
+      render();
+    if (focusMessageReview && model.tab === 'messages') $('#messageReview')?.focus();
+  } catch (error) {
+    model.pending = false;
+    if (!model.connectionError) {
+      model.connectionError = true;
+      if (!model.loaded) {
+        model.loaded = true;
+        render();
+        toast('تعذّر الاتصال بالخدمة المحلية. افتح CortexManager.exe مجددًا.', 'error');
+      }
+    }
+  } finally {
+    polling = false;
+  }
+}
 
-function render(){window.CortexArrange?.capture();const focus=captureView();const nextView=viewKey();updateChrome();$$('[data-page]').forEach(b=>b.classList.toggle('active',b.dataset.page===model.page));$('#pageCrumb').textContent=titles[model.page];const renderers={welcome:()=>window.CortexWelcome.render(),social:()=>window.CortexSocial.render(),changes:()=>window.CortexWorkbench.renderChanges(),simulator:()=>window.CortexWorkbench.renderSimulator(),overview:renderOverview,channels:()=>renderEntities('channel'),roles:()=>renderEntities('role'),redesign:renderRedesign,permissions:renderPermissions,logs:renderLogs,profile:renderGuildProfile,settings:renderSettings};renderers[model.page]();if(model.page==='permissions')addInviteTools();if(model.page==='redesign'&&model.state.demo)showDemoDesignNote();$$('[data-go]').forEach(b=>b.onclick=()=>go(b.dataset.go));bindEmpty();fitEntityLayout();restoreView(nextView,focus);renderedView=nextView;renderedEditor=editorKey(model.editor);renderedInspectorTab=model.tab;}
+function sidebarBotStatus() {
+  const status = model.state.presence?.status;
+  if (model.state.demo) return { text: 'معاينة توضيحية', tone: 'offline' };
+  if (status === 'disconnecting' || (model.runningAction === 'stop' && busy()))
+    return { text: 'جارٍ إيقاف البوت…', tone: 'pending' };
+  if (online()) return { text: 'البوت متصل', tone: 'online' };
+  if (status === 'reconnecting') return { text: 'جارٍ إعادة اتصال البوت…', tone: 'pending' };
+  if (status === 'connecting' || (model.runningAction === 'connect' && busy()))
+    return { text: 'جارٍ تشغيل البوت…', tone: 'pending' };
+  if (status === 'error') return { text: 'تعذّر اتصال البوت', tone: 'error' };
+  return { text: 'البوت غير متصل', tone: 'offline' };
+}
+function updateChrome() {
+  const botStatus = sidebarBotStatus();
+  $('#sidebarGuildName').textContent = guildName();
+  paintGuildAvatar($('#guildAvatar'), inventory()?.guildProfile ?? savedServer());
+  $('#serverSwitch').title = inventory() ? 'تخصيص السيرفر' : 'إعداد الاتصال';
+  $('#sidebarGuildId').textContent = botStatus.text;
+  $('#sidebarGuildId').dataset.botStatus = botStatus.tone;
+  $('#serverSwitch').classList.toggle('server-loaded', botStatus.tone === 'online');
+  updateDraftIndicators();
+  const inv = inventory();
+  $('#channelCountNav').textContent = inv?.channels.filter((c) => c.type !== 4).length ?? '—';
+  $('#roleCountNav').textContent = inv?.roles.length ?? '—';
+  $('#demoBadge').classList.toggle('hidden', !model.state.demo);
 
-function paintGuildAvatar(node,profile){
-  if(!node)return;const url=profile?.iconURL??'',initials=(profile?.name??'').trim().split(/\s+/u).slice(0,2).map(word=>Array.from(word)[0]).join('')||'🎮',signature=url+'|'+initials;
-  if(node.dataset.avatarSignature===signature)return;node.dataset.avatarSignature=signature;node.setAttribute('translate','no');node.textContent=initials;
-  if(url){const img=document.createElement('img');img.alt='';img.referrerPolicy='no-referrer';img.onload=()=>{if(node.dataset.avatarSignature===signature)node.replaceChildren(img);};img.src=url;}
+  let bar = $('.loading-bar');
+  if (busy() && !bar) {
+    bar = document.createElement('div');
+    bar.className = 'loading-bar';
+    document.body.append(bar);
+  }
+  if (!busy() && bar) bar.remove();
 }
-function renderGuildProfile(){
-  const inv=inventory(),profile=inv?.guildProfile;if(!profile){$('#main').innerHTML=noInventory();return;}
-  if(model.editor?.kind!=='guild'||model.editor.item?.id!==profile.id)setEditor('guild',profile);
-  const e=model.editor,disabled=!!profile.readOnlyReason||busy();
-  $('#main').innerHTML=heading('هوية سيرفرك، بطابعك','اعرض صورة السيرفر الحالية وراجع تغيير اسمه قبل الحفظ.','SERVER PROFILE',button('تحديث','refreshGuildProfile','btn-ghost','refresh',busy()))+`<section class="panel guild-profile-panel"><div class="guild-profile-cover"><span class="guild-profile-avatar" id="profileAvatar"></span><div><h2 id="guildNamePreview" translate="no">${esc(e.values.name)}</h2><code>${esc(profile.id)}</code></div><span class="guild-profile-badge">${profile.iconURL?'صورة السيرفر من Discord':'صورة بديلة من أحرف الاسم'}</span></div><div class="panel-body">${profile.readOnlyReason?`<div class="notice yellow">${icon('lock')}<div>${esc(profile.readOnlyReason)}</div></div>`:''}${model.state.error?`<div class="notice yellow" role="alert"><div>${esc(model.state.error)}</div></div>`:''}<div class="field"><label for="editName">اسم السيرفر</label><input id="editName" type="text" minlength="2" maxlength="100" value="${esc(e.values.name)}" ${disabled?'disabled':''}><span class="field-help">من حرفين إلى 100 حرف. الاسم الجديد يظهر لكل أعضاء السيرفر بعد التأكيد.</span></div><div class="notice">${icon('eye')}<div><strong>التعديل يبدأ بمعاينة</strong>ستراجع الاسم الحالي والجديد قبل تأكيد الحفظ.</div></div>${e.approval?`<div class="review-box" id="editReview"><h3>تمت معاينة التعديل</h3><div class="review-summary">${esc(e.approval.summary)}</div></div>`:''}</div><div class="inspector-footer"><span class="save-note" id="draftStatus">${profile.readOnlyReason?'هذه البيانات للعرض فقط':model.state.demo?'وضع العرض · الحفظ الحقيقي معطّل':'مسودة محلية · راجع التعديل قبل الحفظ'}</span><div class="editor-actions">${button('معاينة التعديل','reviewEdit','btn-ghost','eye',disabled)}${button('حفظ التغيير','applyEdit','btn-primary','check',disabled||!e.approval||model.state.demo)}</div></div></section>`;
-  paintGuildAvatar($('#profileAvatar'),profile);$('#refreshGuildProfile').onclick=()=>action('inventory');bindInspector();
-  $('#editName').addEventListener('input',()=>{$('#guildNamePreview').textContent=e.values.name;});
+function heading(title, description, eyebrow, actions = '') {
+  return `<div class="page-heading"><div><div class="page-eyebrow">${esc(eyebrow)}</div><h1>${title}</h1><p>${description}</p></div><div class="heading-actions">${actions}</div></div>`;
+}
+function button(label, id, style = 'btn-ghost', name = '', disabled = false) {
+  return `<button class="btn ${style}" id="${id}" ${disabled ? 'disabled' : ''}>${name ? icon(name) : ''}<span>${esc(label)}</span></button>`;
+}
+function panelTitle(title, subtitle, name, link = '') {
+  return `<div class="panel-header"><div class="panel-title"><span>${icon(name)}</span><div><h2>${title}</h2>${subtitle ? `<small>${subtitle}</small>` : ''}</div></div>${link}</div>`;
+}
+function noInventory(kind = 'server') {
+  return `<section class="panel empty-state"><div class="empty-illustration">${icon(kind === 'roles' ? 'shield' : kind === 'channels' ? 'hash' : 'link')}</div><h2>سيرفرك… في مكان واحد</h2><p>اربط البوت بسيرفرك لعرض الأقسام والقنوات والرتب الحالية، ثم عدّل كل عنصر بمعاينة واضحة قبل الحفظ.</p>${button('إعداد الاتصال', 'emptyConnect', 'btn-primary', 'link')}</section>`;
+}
+function bindEmpty() {
+  const b = $('#emptyConnect');
+  if (b) b.onclick = () => go('settings');
 }
 
-function renderOverview(){const inv=inventory(),channels=inv?.channels??[],roles=inv?.roles??[];const cats=channels.filter(c=>c.type===4),text=channels.filter(c=>c.type===0),voice=channels.filter(c=>c.type===2);
-  $('#main').innerHTML=
-  `<section class="hero"><div class="hero-copy"><h2>${inv?'أهلًا بك في '+esc(guildName()):'سيرفر استثنائي يبدأ من هنا'} <span class="emoji">🎮</span></h2><p>${inv?'قنواتك ورتبك الحالية أمامك. خصّص كل تفصيلة، راجع التغييرات، واجعل تجربة مجتمعك أفضل.':'لوحة احترافية لإدارة قنواتك، ترتيب رتبك، وتشغيل بوتك. كل شيء واضح، من المعاينة حتى التأكيد.'}</p><div class="hero-bottom">${button(inv?'استكشف قنوات السيرفر':'ابدأ ربط السيرفر','heroChannels','btn-primary',inv?'hash':'link')}<span class="hero-caption">${icon('shield')} حماية القيادة مفعّلة دائمًا</span></div></div><div class="hero-art" aria-hidden="true"><div class="orbit"></div><div class="art-center">${icon('spark')}</div><span class="art-bubble emoji">🎮</span><span class="art-bubble emoji">🎙️</span><span class="art-bubble emoji">👑</span><span class="art-star s1">✦</span><span class="art-star s2">✦</span><span class="art-star s3">✧</span></div></section>`+
-  `<div class="stats-grid">${stat('القنوات النصية',inv?text.length:'—','hash',`${cats.length} أقسام منظمة`,'جاهزة للمحادثات')}${stat('القنوات الصوتية',inv?voice.length:'—','voice','مساحات للعب والتواصل','تواصل بصوتك')}${stat('رتب المجتمع',inv?roles.length:'—','users',`${roles.filter(r=>r.readOnlyReason).length} رتب محفوظة`,'صلاحيات لكل دور')}${stat('حماية السيرفر',inv?'مفعّلة':'آمنة','shield','القيادة والتكاملات محفوظة','تأكيد قبل كل تعديل')}</div>`+
-  `<div class="content-grid"><section class="panel">${panelTitle('مساحات مجتمعك','لمحة عن الأقسام والقنوات الموجودة','hash',`<button class="text-link" data-go="channels">عرض الكل ${icon('arrow')}</button>`)}<div class="panel-body">${inv?channelOverview(channels):`<div class="no-result">أضف بيانات الاتصال لعرض قنوات السيرفر الحقيقية.</div>`}<div class="preview-note">${icon('refresh')} ${model.state.demo?'بيانات توضيحية للتصميم؛ غير متصلة بسيرفرك':inv?'قنوات حقيقية من السيرفر المحدد':'لا تُعرض بيانات سيرفر قبل الاتصال'}${model.state.demo?' · لا اتصال بديسكورد':''}</div></div></section><section class="panel">${panelTitle('حالة مساحة العمل','كل خطوة واضحة وتحت تحكمك','log',`<button class="text-link" data-go="logs">السجل ${icon('arrow')}</button>`)}<div class="panel-body">${activityOverview()}</div></section></div>`;
-  $('#heroChannels').onclick=()=>go(inv?'channels':'settings');
+function render() {
+  window.CortexArrange?.capture();
+  const focus = captureView();
+  const nextView = viewKey();
+  updateChrome();
+  $$('[data-page]').forEach((b) => b.classList.toggle('active', b.dataset.page === model.page));
+  $('#pageCrumb').textContent = titles[model.page];
+  const renderers = {
+    welcome: () => window.CortexWelcome.render(),
+    social: () => window.CortexSocial.render(),
+    changes: () => window.CortexWorkbench.renderChanges(),
+    simulator: () => window.CortexWorkbench.renderSimulator(),
+    overview: renderOverview,
+    channels: () => renderEntities('channel'),
+    roles: () => renderEntities('role'),
+    redesign: renderRedesign,
+    permissions: renderPermissions,
+    logs: renderLogs,
+    profile: renderGuildProfile,
+    settings: renderSettings,
+  };
+  renderers[model.page]();
+  if (model.page === 'permissions') addInviteTools();
+  if (model.page === 'redesign' && model.state.demo) showDemoDesignNote();
+  $$('[data-go]').forEach((b) => (b.onclick = () => go(b.dataset.go)));
+  bindEmpty();
+  fitEntityLayout();
+  restoreView(nextView, focus);
+  renderedView = nextView;
+  renderedEditor = editorKey(model.editor);
+  renderedInspectorTab = model.tab;
 }
-function stat(label,value,name,note,caption){return `<article class="stat-card"><div class="stat-top"><span>${label}</span><span class="stat-icon">${icon(name)}</span></div><div class="stat-value" ${typeof value==='string'&&value.length>2?'style="font-size:25px;letter-spacing:0"':''}>${value}</div><div class="stat-bottom">${icon('check')} ${note}<span>· ${caption}</span></div></article>`;}
-function channelOverview(channels){const categories=channels.filter(c=>c.type===4).slice(0,2);return categories.map((c,index)=>`<div class="channel-preview-group"><div class="mini-category">${icon('chevron')} <span class="emoji">${esc(c.name)}</span></div>${channels.filter(x=>x.parent_id===c.id).slice(0,index?2:3).map((ch,i)=>`<div class="mini-channel ${!index&&!i?'selected':''}">${icon(typeIcon(ch.type))}<span class="emoji">${esc(ch.name)}</span>${ch.readOnlyReason?icon('lock'):!index&&!i?'<span class="channel-tag">قناة المجتمع</span>':''}</div>`).join('')}</div>`).join('')||channels.filter(c=>c.type!==4).slice(0,5).map(c=>`<div class="mini-channel">${icon(typeIcon(c.type))}<span class="emoji">${esc(c.name)}</span></div>`).join('')||'<div class="no-result">لا توجد قنوات في السيرفر.</div>';}
-function activityOverview(){return `<div class="activity-line"><span class="activity-dot"></span><div><p>${inventory()?'تم تحميل بيانات السيرفر':'مساحة العمل جاهزة للاتصال'}</p><small>${model.state.demo?'بيانات توضيحية · دون اتصال بديسكورد':inventory()?'القنوات والرتب متاحة للعرض والتحرير':'أدخل التوكن ورقم السيرفر للبدء'}</small></div><time>${inventory()?shortTime(inventory().capturedAt):'الآن'}</time></div><div class="activity-line"><span class="activity-dot"></span><div><p>حماية القيادة والتكاملات مفعّلة</p><small>OWNER وCO_OWNER لا تتغيران</small></div>${icon('lock')}</div><div class="activity-line"><span class="activity-dot"></span><div><p>المعاينة تسبق التنفيذ دائمًا</p><small>أي تعديل يحتاج مراجعتك وتأكيدك</small></div>${icon('check')}</div>`;}
 
-function entityControls(kind){const add=kind==='role'?'إنشاء رتبة':'إضافة مساحة';return '<div class="entity-tools" role="group" aria-label="أدوات الإدارة"><button type="button" class="entity-tool add-tool" id="addEntity" aria-label="'+add+'" '+(busy()||!inventory()?'disabled':'')+'>'+icon('plus')+'</button><button type="button" class="entity-tool refresh-tool '+(busy()?'is-loading':'')+'" id="entityRefresh" aria-label="تحديث" '+(busy()?'disabled':'')+'>'+icon('refresh')+'</button></div>';}
-function renderEntities(kind){const inv=inventory(),isRole=kind==='role';$('#main').innerHTML=inv?'':`<div class="entity-toolbar">${entityControls(kind)}</div>`;if(!inv){$('#main').insertAdjacentHTML('beforeend',noInventory(isRole?'roles':'channels'));$('#entityRefresh').onclick=()=>action('inventory');return;}ensureEditor(kind);if(isRole)$('#main').insertAdjacentHTML('beforeend',roleMemberOverview(inv));
-  $('#main').insertAdjacentHTML('beforeend',`<div class="entity-layout"><section class="panel entity-browser"><div class="browser-toolbar"><div class="search-box">${icon('search')}<input id="entitySearch" type="search" value="${esc(model.query)}" placeholder="${isRole?'ابحث عن رتبة…':'ابحث عن قناة أو قسم…'}" aria-label="البحث في ${isRole?'الرتب':'القنوات'}"></div></div><div class="browser-meta"><span>${isRole?'رتب السيرفر':'هيكل السيرفر'}</span><span>${isRole?inv.roles.length+' رتبة':inv.channels.length+' عنصر'}</span></div><div class="browser-tree" id="entityTree">${entityTree(kind)}</div></section><section class="panel inspector" id="entityInspector">${inspector(kind)}</section></div>`);
-  $('#entityRefresh').onclick=()=>action('inventory');$('#addEntity').onclick=()=>isRole?createEntity('role'):showCreateChannel();$('#entitySearch').oninput=event=>{captureView();model.query=event.target.value;$('#entityTree').innerHTML=entityTree(kind);bindTree(kind);};bindTree(kind);bindInspector();
+function paintGuildAvatar(node, profile) {
+  if (!node) return;
+  const url = profile?.iconURL ?? '',
+    initials =
+      (profile?.name ?? '')
+        .trim()
+        .split(/\s+/u)
+        .slice(0, 2)
+        .map((word) => Array.from(word)[0])
+        .join('') || '🎮',
+    signature = url + '|' + initials;
+  if (node.dataset.avatarSignature === signature) return;
+  node.dataset.avatarSignature = signature;
+  node.setAttribute('translate', 'no');
+  node.textContent = initials;
+  if (url) {
+    const img = document.createElement('img');
+    img.alt = '';
+    img.referrerPolicy = 'no-referrer';
+    img.onload = () => {
+      if (node.dataset.avatarSignature === signature) node.replaceChildren(img);
+    };
+    img.src = url;
+  }
 }
-function moveInventory(){
- const inv=inventory(),move=model.moveDraft?.plan?.move;if(!inv||!move||model.moveDraft.guildId!==inv.guildId)return inv;
- const copy=structuredClone(inv),items=move.kind==='role'?copy.roles:copy.channels;
- for(const change of move.items){const item=items.find(x=>x.id===change.id);if(item)Object.assign(item,change);}
- if(move.kind==='role')items.sort((a,b)=>b.position-a.position);else items.sort((a,b)=>(a.position??0)-(b.position??0));return copy;
+function renderGuildProfile() {
+  const inv = inventory(),
+    profile = inv?.guildProfile;
+  if (!profile) {
+    $('#main').innerHTML = noInventory();
+    return;
+  }
+  if (model.editor?.kind !== 'guild' || model.editor.item?.id !== profile.id)
+    setEditor('guild', profile);
+  const e = model.editor,
+    disabled = !!profile.readOnlyReason || busy();
+  $('#main').innerHTML =
+    heading(
+      'هوية سيرفرك، بطابعك',
+      'اعرض صورة السيرفر الحالية وراجع تغيير اسمه قبل الحفظ.',
+      'SERVER PROFILE',
+      button('تحديث', 'refreshGuildProfile', 'btn-ghost', 'refresh', busy()),
+    ) +
+    `<section class="panel guild-profile-panel"><div class="guild-profile-cover"><span class="guild-profile-avatar" id="profileAvatar"></span><div><h2 id="guildNamePreview" translate="no">${esc(e.values.name)}</h2><code>${esc(profile.id)}</code></div><span class="guild-profile-badge">${profile.iconURL ? 'صورة السيرفر من Discord' : 'صورة بديلة من أحرف الاسم'}</span></div><div class="panel-body">${profile.readOnlyReason ? `<div class="notice yellow">${icon('lock')}<div>${esc(profile.readOnlyReason)}</div></div>` : ''}${model.state.error ? `<div class="notice yellow" role="alert"><div>${esc(model.state.error)}</div></div>` : ''}<div class="field"><label for="editName">اسم السيرفر</label><input id="editName" type="text" minlength="2" maxlength="100" value="${esc(e.values.name)}" ${disabled ? 'disabled' : ''}><span class="field-help">من حرفين إلى 100 حرف. الاسم الجديد يظهر لكل أعضاء السيرفر بعد التأكيد.</span></div><div class="notice">${icon('eye')}<div><strong>التعديل يبدأ بمعاينة</strong>ستراجع الاسم الحالي والجديد قبل تأكيد الحفظ.</div></div>${e.approval ? `<div class="review-box" id="editReview"><h3>تمت معاينة التعديل</h3><div class="review-summary">${esc(e.approval.summary)}</div></div>` : ''}</div><div class="inspector-footer"><span class="save-note" id="draftStatus">${profile.readOnlyReason ? 'هذه البيانات للعرض فقط' : model.state.demo ? 'وضع العرض · الحفظ الحقيقي معطّل' : 'مسودة محلية · راجع التعديل قبل الحفظ'}</span><div class="editor-actions">${button('معاينة التعديل', 'reviewEdit', 'btn-ghost', 'eye', disabled)}${button('حفظ التغيير', 'applyEdit', 'btn-primary', 'check', disabled || !e.approval || model.state.demo)}</div></div></section>`;
+  paintGuildAvatar($('#profileAvatar'), profile);
+  $('#refreshGuildProfile').onclick = () => action('inventory');
+  bindInspector();
+  $('#editName').addEventListener('input', () => {
+    $('#guildNamePreview').textContent = e.values.name;
+  });
 }
-function startMove(kind,item,target=null,placement=null){
- if(busy()||model.moveDraft||item.readOnlyReason||item.moveReadOnlyReason)return;
- invalidate();model.moveDraft={guildId:guildId(),kind,item,targetId:target?.id??'',placement:placement??'before',pending:false,plan:null};
- renderMoveDialog();if(target)previewMove();
-}
-function moveTargets(d){const inv=inventory();return (d.kind==='role'?inv.roles:inv.channels).filter(x=>x.id!==d.item.id&&!x.readOnlyReason&&!x.moveReadOnlyReason&&(d.kind==='role'||(d.item.type===4?x.type===4:x.type===4||([2,13].includes(x.type)=== [2,13].includes(d.item.type)&&x.type!==4))));}
-function renderMoveDialog(error=''){
- const d=model.moveDraft;if(!d)return;const targets=moveTargets(d);if(!targets.some(x=>x.id===d.targetId))d.targetId=targets[0]?.id??'';
- const target=targets.find(x=>x.id===d.targetId),inside=d.kind==='channel'&&d.item.type!==4&&target?.type===4;
- if(inside)d.placement='inside';else if(d.placement==='inside')d.placement='before';
- const locked=d.pending||d.applying;
- $('#dialogContent').innerHTML=`<div class="dialog-symbol">${icon('move')}</div><h2>نقل وترتيب العنصر</h2><p>اختر وجهته وراجع النقل قبل تأكيد حفظه في Discord.</p><div class="move-source">${icon(d.kind==='role'?'shield':typeIcon(d.item.type))}<strong translate="no">${esc(d.item.name)}</strong><span>العنصر المحدد</span></div><div class="field"><label for="moveTarget">وجهة النقل</label><select id="moveTarget" translate="no" ${locked?'disabled':''}>${targets.map(x=>`<option value="${esc(x.id)}" ${x.id===d.targetId?'selected':''}>${esc(x.name)}</option>`).join('')}</select></div><div class="field"><label for="movePlacement">مكان العنصر</label><select id="movePlacement" ${locked?'disabled':''}>${(inside?[['inside','داخل القسم']]:[['before','قبل العنصر'],['after','بعد العنصر']]).map(([value,label])=>`<option value="${value}" ${value===d.placement?'selected':''}>${label}</option>`).join('')}</select></div><p class="move-independent">النقل مستقل عن تعديلات الحقول غير المحفوظة.</p>${error?`<div class="notice yellow" role="alert">${esc(error)}</div>`:''}${d.plan?`<div class="move-reviewed"><strong>${icon('eye')} معاينة النقل</strong><pre translate="no">${esc(d.plan.summary)}</pre></div>`:''}${model.state.demo?'<p>وضع العرض التوضيحي: يمكن مراجعة النقل فقط.</p>':''}<div class="dialog-actions"><button class="btn btn-ghost" value="cancel" ${d.applying?'disabled':''}>إلغاء</button><button type="button" class="btn btn-ghost" id="previewMove" ${locked||!targets.length?'disabled':''}>${icon('eye')} ${d.pending?'جارٍ معاينة النقل…':'معاينة النقل'}</button><button type="button" class="btn btn-primary" id="applyMove" ${locked||!d.plan||model.state.demo?'disabled':''}>${icon('check')} تأكيد النقل</button></div>`;
- fitDialogLayout();if(!$('#confirmDialog').open)$('#confirmDialog').showModal();
- $('#moveTarget').onchange=event=>{d.targetId=event.target.value;d.plan=null;render();renderMoveDialog();};
- $('#movePlacement').onchange=event=>{d.placement=event.target.value;d.plan=null;render();renderMoveDialog();};
- $('#previewMove').onclick=previewMove;
- $('#applyMove').onclick=()=>{if(!d.plan||model.state.demo)return;d.applying=true;$('#confirmDialog').close();action('edit-apply',{editConfirmation:{confirmed:true,guildId:d.guildId,approvalHash:d.plan.approvalHash}});};
-}
-function previewMove(){const d=model.moveDraft;if(!d||busy())return;d.pending=true;d.plan=null;renderMoveDialog();action('edit-preview',{editRequest:{kind:d.kind,action:'move',id:d.item.id,revision:d.item.revision,values:{target_id:d.targetId,placement:d.placement}}});}
-$('#confirmDialog').addEventListener('close',()=>{if(model.moveDraft&&!model.moveDraft.applying){model.moveDraft=null;render();}});
-function roleMemberOverview(inv){const stats=inv.memberStatistics;return '<section class="role-members-overview"><span class="members-overview-icon">'+icon('users')+'</span><div><span>أعضاء السيرفر</span><strong>'+(stats?.total??'—')+'</strong><small>'+(stats?.total===null||!stats?'العدد غير متاح حاليًا':stats.totalApproximate?'عدد تقريبي من Discord':'إجمالي الأعضاء، بما فيهم البوتات')+'</small></div>'+entityControls('role')+'</section>'+(stats?.roleCountsAvailable?'':'<div class="notice yellow"><div>تعذّر جلب أعداد أعضاء الرتب. يمكنك متابعة التعديل وتحديث البيانات لاحقًا.</div></div>');}
-function roleMemberInfo(e){if(!e.item)return '';const current=inventory()?.roles.find(r=>r.id===e.item.id)??e.item;return '<div class="role-member-info">'+icon('users')+'<span>أعضاء هذه الرتبة</span><strong>'+(current.memberCountApproximate&&current.memberCount!==null?'≈ ':'')+(current.memberCount??'—')+'</strong><small>'+(current.memberCount==null?'العدد غير متاح حاليًا':current.memberCountApproximate?'عدد تقريبي من Discord':'حسب آخر تحديث')+'</small><button type="button" class="btn btn-ghost btn-small" id="grantRole" '+(busy()||e.item.readOnlyReason?'disabled':'')+'>'+icon('users')+' منح الرتبة لعضو</button></div>';}
 
-function entityTree(kind){const inv=moveInventory(),query=model.query.toLocaleLowerCase('ar'),e=model.editor;const item=(entity,child=false)=>`<button class="tree-item ${child?'tree-child ':''}${e?.item?.id===entity.id?'active':''}" data-entity-id="${esc(entity.id)}" title="${esc(entity.name)}">${kind==='role'?`<span class="role-dot" style="background:${colorHex(entity.color)||'#8b95aa'}"></span>`:icon(typeIcon(entity.type))}<span class="label emoji">${esc(entity.name)}</span>${kind==='role'?`<span class="role-member-badge" title="عدد أعضاء الرتبة">${icon('users')}<b>${entity.memberCountApproximate&&entity.memberCount!==null?'≈ ':''}${entity.memberCount??'—'}</b></span>`:''}${entity.readOnlyReason?icon('lock'):''}</button>`;
-  if(kind==='role')return inv.roles.filter(r=>r.name.toLocaleLowerCase('ar').includes(query)).map(r=>item(r)).join('')||'<div class="no-result">لا توجد رتبة بهذا الاسم.</div>';
-  if(query)return inv.channels.filter(c=>c.name.toLocaleLowerCase('ar').includes(query)).map(c=>item(c)).join('')||'<div class="no-result">لا توجد قناة بهذا الاسم.</div>';
-  return inv.channels.filter(c=>c.type===4).map(c=>`<details class="tree-group" data-category-id="${esc(c.id)}" open><summary>${icon('chevron')}<span class="emoji">${esc(c.name)}</span><button class="category-select" type="button" data-entity-id="${esc(c.id)}" aria-label="تعديل القسم ${esc(c.name)}">${icon('settings')}</button></summary>${inv.channels.filter(ch=>ch.parent_id===c.id).sort((a,b)=>([2,13].includes(a.type)?1:0)-([2,13].includes(b.type)?1:0)||(a.position??0)-(b.position??0)).map(ch=>item(ch,true)).join('')}</details>`).join('')+inv.channels.filter(c=>c.type!==4&&!inv.channels.some(parent=>parent.id===c.parent_id)).map(c=>item(c)).join('');
+function renderOverview() {
+  const inv = inventory(),
+    channels = inv?.channels ?? [],
+    roles = inv?.roles ?? [];
+  const cats = channels.filter((c) => c.type === 4),
+    text = channels.filter((c) => c.type === 0),
+    voice = channels.filter((c) => c.type === 2);
+  $('#main').innerHTML =
+    `<section class="hero"><div class="hero-copy"><h2>${inv ? 'أهلًا بك في ' + esc(guildName()) : 'سيرفر استثنائي يبدأ من هنا'} <span class="emoji">🎮</span></h2><p>${inv ? 'قنواتك ورتبك الحالية أمامك. خصّص كل تفصيلة، راجع التغييرات، واجعل تجربة مجتمعك أفضل.' : 'لوحة احترافية لإدارة قنواتك، ترتيب رتبك، وتشغيل بوتك. كل شيء واضح، من المعاينة حتى التأكيد.'}</p><div class="hero-bottom">${button(inv ? 'استكشف قنوات السيرفر' : 'ابدأ ربط السيرفر', 'heroChannels', 'btn-primary', inv ? 'hash' : 'link')}<span class="hero-caption">${icon('shield')} حماية القيادة مفعّلة دائمًا</span></div></div><div class="hero-art" aria-hidden="true"><div class="orbit"></div><div class="art-center">${icon('spark')}</div><span class="art-bubble emoji">🎮</span><span class="art-bubble emoji">🎙️</span><span class="art-bubble emoji">👑</span><span class="art-star s1">✦</span><span class="art-star s2">✦</span><span class="art-star s3">✧</span></div></section>` +
+    `<div class="stats-grid">${stat('القنوات النصية', inv ? text.length : '—', 'hash', `${cats.length} أقسام منظمة`, 'جاهزة للمحادثات')}${stat('القنوات الصوتية', inv ? voice.length : '—', 'voice', 'مساحات للعب والتواصل', 'تواصل بصوتك')}${stat('رتب المجتمع', inv ? roles.length : '—', 'users', `${roles.filter((r) => r.readOnlyReason).length} رتب محفوظة`, 'صلاحيات لكل دور')}${stat('حماية السيرفر', inv ? 'مفعّلة' : 'آمنة', 'shield', 'القيادة والتكاملات محفوظة', 'تأكيد قبل كل تعديل')}</div>` +
+    `<div class="content-grid"><section class="panel">${panelTitle('مساحات مجتمعك', 'لمحة عن الأقسام والقنوات الموجودة', 'hash', `<button class="text-link" data-go="channels">عرض الكل ${icon('arrow')}</button>`)}<div class="panel-body">${inv ? channelOverview(channels) : `<div class="no-result">أضف بيانات الاتصال لعرض قنوات السيرفر الحقيقية.</div>`}<div class="preview-note">${icon('refresh')} ${model.state.demo ? 'بيانات توضيحية للتصميم؛ غير متصلة بسيرفرك' : inv ? 'قنوات حقيقية من السيرفر المحدد' : 'لا تُعرض بيانات سيرفر قبل الاتصال'}${model.state.demo ? ' · لا اتصال بديسكورد' : ''}</div></div></section><section class="panel">${panelTitle('حالة مساحة العمل', 'كل خطوة واضحة وتحت تحكمك', 'log', `<button class="text-link" data-go="logs">السجل ${icon('arrow')}</button>`)}<div class="panel-body">${activityOverview()}</div></section></div>`;
+  $('#heroChannels').onclick = () => go(inv ? 'channels' : 'settings');
 }
-function bindTree(kind){const groups=workspaceViews.get(viewKey())?.groups;$$('[data-category-id]').forEach(g=>{if(groups&&Object.hasOwn(groups,g.dataset.categoryId))g.open=groups[g.dataset.categoryId];});$$('[data-entity-id]').forEach(b=>b.onclick=event=>{event.preventDefault();const list=kind==='role'?inventory().roles:inventory().channels;setEditor(kind,list.find(x=>x.id===b.dataset.entityId));render();});window.CortexArrange?.mount($('#entityTree'),{kind,inventory:moveInventory(),busy:busy()||!!model.moveDraft,query:model.query,onMove:(item,target,placement)=>startMove(kind,item,target,placement)});}
-function accessNotice(e){
-  const reason=e.item?.readOnlyReason;
-  const hierarchy=reason==='role at or above the bot hierarchy';
-  const reasons={'permanent OWNER/CO_OWNER role':'رتب القيادة محفوظة دائمًا، ولا يمكن تعديل صلاحياتها أو أعضائها أو ترتيبها من البرنامج.','@everyone':'رتبة الجميع محفوظة وفق سياسة هذا المشروع.','Discord/integration-managed role':'هذه رتبة يديرها Discord أو أحد التكاملات؛ تُدار من إعدادات التكامل نفسه.','role assigned to Cortex Manager':'هذه رتبة يحملها البوت؛ لا يعدّل البرنامج رتبه الخاصة.'};
-  const explanation=hierarchy?'Discord يمنع البوت من تعديل رتبة أعلى من أعلى رتبة يحملها أو مساوية لها، حتى مع Administrator.':reasons[reason]??reason;
-  const steps=hierarchy?`<p>من Discord افتح <strong>إعدادات السيرفر ← الرتب</strong>، ثم ارفع رتبة البوت <strong>${esc(inventory()?.botRole?.name??'Cortex Manager')}</strong> فوق الرتب التي تريد إدارتها، مع بقائها أسفل OWNER وCO_OWNER. لا تحرّك رتب القيادة.</p><p>بعد ذلك اضغط تحديث لتفعيل الصلاحيات المتاحة.</p><button class="btn btn-ghost btn-small" type="button" id="reloadRoleAccess">تحديث صلاحية إدارة الرتبة</button>`:'';
-  return `<div class="notice ${hierarchy?'yellow':'green'}">${icon('lock')}<div><strong>${hierarchy?'يلزم رفع رتبة البوت في Discord':e.kind==='role'?'هذه الرتبة محفوظة':'هذا العنصر محفوظ'}</strong>${esc(explanation)}${steps}</div></div>`;
+function stat(label, value, name, note, caption) {
+  return `<article class="stat-card"><div class="stat-top"><span>${label}</span><span class="stat-icon">${icon(name)}</span></div><div class="stat-value" ${typeof value === 'string' && value.length > 2 ? 'style="font-size:25px;letter-spacing:0"' : ''}>${value}</div><div class="stat-bottom">${icon('check')} ${note}<span>· ${caption}</span></div></article>`;
 }
-function inspector(kind){const e=model.editor;if(!e)return '<div class="empty-state"><h2>اختر عنصرًا من القائمة</h2></div>';if(kind==='role')return liveRoleInspector(e);const readOnly=e.item?.readOnlyReason;return `<div class="inspector-hero"><div class="entity-symbol">${icon(typeIcon(Number(e.values.type)))}</div><div class="entity-title"><strong class="emoji">${esc(e.values.name||'مساحة جديدة')}</strong><small>${esc(typeLabel(Number(e.values.type)))} <code>${esc(e.item?.id??'NEW')}</code></small></div><span class="entity-status">${model.tab==='messages'?'رسالة باسم البوت':readOnly?'محمية · للعرض فقط':e.action==='create'?'مسودة جديدة':'إعدادات العنصر'}</span>${entityControls(kind)}</div><div class="inspector-body ${model.tab==='messages'?'message-inspector-body':''}">${(model.state.error||model.localError)&&!busy()?`<div class="notice yellow" role="alert"><div><strong>تعذّرت العملية؛ راجع السبب قبل المحاولة مجددًا</strong>${esc(model.state.error||model.localError)}<br><button class="btn btn-ghost btn-small" type="button" id="reloadEditor">تحديث بيانات السيرفر</button></div></div>`:''}${readOnly&&model.tab!=='messages'?accessNotice(e):''}<div class="page-tabs"><button class="page-tab ${model.tab==='general'?'active':''}" data-editor-tab="general">إعدادات القناة</button><button class="page-tab ${model.tab==='permissions'?'active':''}" data-editor-tab="permissions">أذونات الوصول</button>${e.item&&[0,2,5].includes(e.item.type)?`<button class="page-tab ${model.tab==='messages'?'active':''}" data-editor-tab="messages">رسائل البوت</button>`:''}</div>${model.tab==='messages'?messageComposer(e):model.tab==='general'?channelGeneral(e,readOnly):channelPermissions(e,readOnly)}${e.approval&&model.tab!=='messages'?`<div class="review-box" id="editReview"><h3>${icon('eye')} تمت معاينة التعديل</h3><div class="review-summary">${esc(e.approval.summary)}</div></div>`:''}</div><div class="inspector-footer ${model.tab==='messages'?'hidden':''}"><span class="save-note">${icon(readOnly?'lock':'info')}<span id="draftStatus">${readOnly?'هذه البيانات للعرض فقط':model.state.demo?'وضع العرض · الحفظ الحقيقي معطّل':e.approval?'الخطة جاهزة. الحفظ يتطلب تأكيدك.':'مسودة محلية · راجع التعديل قبل الحفظ'}</span></span><div class="editor-actions">${button('معاينة التعديل','reviewEdit','btn-ghost','eye',busy()||!!readOnly)}${button('حفظ التغيير','applyEdit','btn-primary','check',busy()||!!readOnly||!e.approval||model.state.demo)}</div></div>`;}
-function rulesTemplate(){
-  const rules=[
-    ['🤝 الاحترام أولًا','عامل الجميع باحترام. يُمنع التنمّر والإهانة والكراهية والتمييز.','🤝 Respect everyone','Treat everyone with respect. Bullying, harassment, hate speech and discrimination are prohibited.'],
-    ['🛡️ الخصوصية والسلامة','لا تنشر معلومات شخصية أو محادثات خاصة دون موافقة. يُمنع التهديد والاحتيال والروابط الضارة.','🛡️ Privacy & safety','Do not share personal information or private conversations without consent. Threats, scams and malicious links are prohibited.'],
-    ['💬 تنظيم المحادثات','استخدم القناة المناسبة. تجنّب السبام وتكرار الرسائل والمنشن المزعج.','💬 Keep chats organized','Use the appropriate channel. Avoid spam, repeated messages and excessive mentions.'],
-    ['🎮 اللعب النظيف','يُمنع الغش واستغلال الثغرات وتخريب اللعب. تنافس بروح رياضية واحترم زملاءك.','🎮 Fair play','No cheating, exploit abuse or intentional disruption. Play fairly and respect your teammates.'],
-    ['🔞 محتوى مناسب للجميع','يُمنع المحتوى الجنسي أو العنيف الصادم أو غير القانوني، وأي محتوى يخالف إرشادات مجتمع Discord.','🔞 Keep content appropriate','No sexual, graphic or illegal content, or content that violates Discord Community Guidelines.'],
-    ['📢 الإعلانات والروابط','الإعلانات وروابط الدعوة والترويج تحتاج موافقة الإدارة مسبقًا، ويشمل ذلك الرسائل الخاصة غير المرغوبة.','📢 Advertising & links','Advertising, invite links and promotions require prior staff approval, including unsolicited promotional DMs.'],
-    ['🎙️ آداب الصوت','تجنّب الصراخ والأصوات المزعجة. لا تسجّل الآخرين أو تبث محادثاتهم دون موافقتهم.','🎙️ Voice etiquette','Avoid shouting and disruptive audio. Do not record or stream other people’s conversations without their consent.'],
-    ['🎫 البلاغات والإدارة','بلّغ عن المخالفات عبر قناة الدعم دون تصعيد علني. قد تشمل الإجراءات التنبيه أو التقييد أو الإبعاد بحسب الحالة؛ يمكنك طلب مراجعة عبر الدعم.','🎫 Reports & moderation','Report issues through support without public escalation. Actions may include warnings, restrictions or removal depending on the situation; request a review through support.']
-  ];
-  return {embeds:[
-    {title:'📜 قوانين المجتمع | '+guildName(),description:'أهلًا بك! مساحة للعب والتعارف بروح طيبة. اقرأ القوانين وساعدنا نحافظ على مجتمع آمن وممتع للجميع.',color:9274367,fields:rules.map(r=>({name:r[0],value:r[1],inline:false})),footer:{text:'شكرًا لالتزامك • نتمنى لك وقتًا ممتعًا 🎮'}},
-    {title:'📜 Community Rules | '+guildName(),description:'Welcome! A place to play, connect and enjoy good company. Please read the rules and help keep our community safe and welcoming.',color:5025616,fields:rules.map(r=>({name:r[2],value:r[3],inline:false})),footer:{text:'Thank you for doing your part • Enjoy your stay 🎮'}}
-  ]};
+function channelOverview(channels) {
+  const categories = channels.filter((c) => c.type === 4).slice(0, 2);
+  return (
+    categories
+      .map(
+        (c, index) =>
+          `<div class="channel-preview-group"><div class="mini-category">${icon('chevron')} <span class="emoji">${esc(c.name)}</span></div>${channels
+            .filter((x) => x.parent_id === c.id)
+            .slice(0, index ? 2 : 3)
+            .map(
+              (ch, i) =>
+                `<div class="mini-channel ${!index && !i ? 'selected' : ''}">${icon(typeIcon(ch.type))}<span class="emoji">${esc(ch.name)}</span>${ch.readOnlyReason ? icon('lock') : !index && !i ? '<span class="channel-tag">قناة المجتمع</span>' : ''}</div>`,
+            )
+            .join('')}</div>`,
+      )
+      .join('') ||
+    channels
+      .filter((c) => c.type !== 4)
+      .slice(0, 5)
+      .map(
+        (c) =>
+          `<div class="mini-channel">${icon(typeIcon(c.type))}<span class="emoji">${esc(c.name)}</span></div>`,
+      )
+      .join('') ||
+    '<div class="no-result">لا توجد قنوات في السيرفر.</div>'
+  );
 }
-const liveRoleStates=new Map();
-const liveRoleFlags=e=>e.item?.flags??inventory().permissions.map(p=>({...p,granted:false,canGrant:p.granted}));
-function liveRoleContext(e){
- const key=guildId()+':'+(e.item?.id??'new');if(!liveRoleStates.has(key))liveRoleStates.set(key,{editorScrolls:{},roleViews:{}});
- const state=liveRoleStates.get(key),flags=liveRoleFlags(e);state.permissions=flags.map(flag=>flag.name);state.roleViews[key]=model.tab==='general'?'appearance':'permissions';
- return {state,flags,role:{key,...e.values,permissions:flags.filter(flag=>e.permissionChanges[flag.name]??flag.granted).map(flag=>flag.name)}};
+function activityOverview() {
+  return `<div class="activity-line"><span class="activity-dot"></span><div><p>${inventory() ? 'تم تحميل بيانات السيرفر' : 'مساحة العمل جاهزة للاتصال'}</p><small>${model.state.demo ? 'بيانات توضيحية · دون اتصال بديسكورد' : inventory() ? 'القنوات والرتب متاحة للعرض والتحرير' : 'أدخل التوكن ورقم السيرفر للبدء'}</small></div><time>${inventory() ? shortTime(inventory().capturedAt) : 'الآن'}</time></div><div class="activity-line"><span class="activity-dot"></span><div><p>حماية رتب Discord مفعّلة</p><small>حسب الصلاحيات وترتيب البوت</small></div>${icon('lock')}</div><div class="activity-line"><span class="activity-dot"></span><div><p>المعاينة تسبق التنفيذ دائمًا</p><small>أي تعديل يحتاج مراجعتك وتأكيدك</small></div>${icon('check')}</div>`;
 }
-function liveRoleInspector(e){
- const readOnly=e.item?.readOnlyReason,{state,role}=liveRoleContext(e);
- return `<div class="live-role-topbar">${icon(readOnly?'lock':'shield')}<span>${e.action==='create'?'رتبة جديدة':'رتبة في السيرفر'}</span><code translate="no">${esc(e.item?.id??'NEW')}</code><span class="entity-status">${readOnly?'محمية · للعرض فقط':e.action==='create'?'مسودة جديدة':'إعدادات العنصر'}</span></div><div class="inspector-body live-role-body">${(model.state.error||model.localError)&&!busy()?`<div class="notice yellow" role="alert"><div><strong>تعذّرت العملية؛ راجع السبب قبل المحاولة مجددًا</strong>${esc(model.state.error||model.localError)}<br><button class="btn btn-ghost btn-small" type="button" id="reloadEditor">تحديث بيانات السيرفر</button></div></div>`:''}${roleMemberInfo(e)}${readOnly?accessNotice(e):''}<div id="liveRoleUI" class="live-role-ui">${window.CortexRoleUI.render(state,role,{permissionLabel,live:true})}</div>${e.approval?`<div class="review-box" id="editReview"><h3>${icon('eye')} تمت معاينة التعديل</h3><div class="review-summary">${esc(e.approval.summary)}</div></div>`:''}</div><div class="inspector-footer"><span class="save-note">${icon(readOnly?'lock':'info')}<span id="draftStatus">${readOnly?'هذه البيانات للعرض فقط':model.state.demo?'وضع العرض · الحفظ الحقيقي معطّل':e.approval?'الخطة جاهزة. الحفظ يتطلب تأكيدك.':'مسودة محلية · راجع التعديل قبل الحفظ'}</span></span><div class="editor-actions">${button('معاينة التعديل','reviewEdit','btn-ghost','eye',busy()||!!readOnly)}${button('حفظ التغيير','applyEdit','btn-primary','check',busy()||!!readOnly||!e.approval||model.state.demo)}</div></div>`;
+
+function entityControls(kind) {
+  const add = kind === 'role' ? 'إنشاء رتبة' : 'إضافة مساحة';
+  return (
+    '<div class="entity-tools" role="group" aria-label="أدوات الإدارة"><button type="button" class="entity-tool add-tool" id="addEntity" aria-label="' +
+    add +
+    '" ' +
+    (busy() || !inventory() ? 'disabled' : '') +
+    '>' +
+    icon('plus') +
+    '</button><button type="button" class="entity-tool refresh-tool ' +
+    (busy() ? 'is-loading' : '') +
+    '" id="entityRefresh" aria-label="تحديث" ' +
+    (busy() ? 'disabled' : '') +
+    '>' +
+    icon('refresh') +
+    '</button></div>'
+  );
 }
-function bindLiveRole(e){
- const root=$('#liveRoleUI');if(!root)return;const {state,flags,role}=liveRoleContext(e),blocked=busy()||!!e.item?.readOnlyReason;
- const changed=()=>{
-  for(const field of ['name','color','hoist','mentionable'])e.values[field]=role[field];
-  for(const flag of flags){const value=role.permissions.includes(flag.name);if(value===flag.granted)delete e.permissionChanges[flag.name];else e.permissionChanges[flag.name]=value;}
+function renderEntities(kind) {
+  const inv = inventory(),
+    isRole = kind === 'role';
+  $('#main').innerHTML = inv ? '' : `<div class="entity-toolbar">${entityControls(kind)}</div>`;
+  if (!inv) {
+    $('#main').insertAdjacentHTML('beforeend', noInventory(isRole ? 'roles' : 'channels'));
+    $('#entityRefresh').onclick = () => action('inventory');
+    return;
+  }
+  ensureEditor(kind);
+  if (isRole) $('#main').insertAdjacentHTML('beforeend', roleMemberOverview(inv));
+  $('#main').insertAdjacentHTML(
+    'beforeend',
+    `<div class="entity-layout"><section class="panel entity-browser"><div class="browser-toolbar"><div class="search-box">${icon('search')}<input id="entitySearch" type="search" value="${esc(model.query)}" placeholder="${isRole ? 'ابحث عن رتبة…' : 'ابحث عن قناة أو قسم…'}" aria-label="البحث في ${isRole ? 'الرتب' : 'القنوات'}"></div></div><div class="browser-meta"><span>${isRole ? 'رتب السيرفر' : 'هيكل السيرفر'}</span><span>${isRole ? inv.roles.length + ' رتبة' : inv.channels.length + ' عنصر'}</span></div><div class="browser-tree" id="entityTree">${entityTree(kind)}</div></section><section class="panel inspector" id="entityInspector">${inspector(kind)}</section></div>`,
+  );
+  $('#entityRefresh').onclick = () => action('inventory');
+  $('#addEntity').onclick = () => (isRole ? createEntity('role') : showCreateChannel());
+  $('#entitySearch').oninput = (event) => {
+    captureView();
+    model.query = event.target.value;
+    $('#entityTree').innerHTML = entityTree(kind);
+    bindTree(kind);
+  };
+  bindTree(kind);
+  bindInspector();
+}
+function moveInventory() {
+  const inv = inventory(),
+    move = model.moveDraft?.plan?.move;
+  if (!inv || !move || model.moveDraft.guildId !== inv.guildId) return inv;
+  const copy = structuredClone(inv),
+    items = move.kind === 'role' ? copy.roles : copy.channels;
+  for (const change of move.items) {
+    const item = items.find((x) => x.id === change.id);
+    if (item) Object.assign(item, change);
+  }
+  if (move.kind === 'role') items.sort((a, b) => b.position - a.position);
+  else items.sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
+  return copy;
+}
+function startMove(kind, item, target = null, placement = null) {
+  if (busy() || model.moveDraft || item.readOnlyReason || item.moveReadOnlyReason) return;
   invalidate();
- };
- const mount=()=>{
-  window.CortexRoleUI.bind(root,state,role,changed,()=>{captureView();model.tab=state.roleViews[role.key]==='appearance'?'general':'permissions';root.innerHTML=window.CortexRoleUI.render(state,role,{permissionLabel,live:true});mount();renderedInspectorTab=model.tab;});
-  const name=$('#editName',root);
-  if(name){name.oninput=()=>{role.name=name.value;changed();for(const target of $$('#blueprintRoleTitle,#blueprintRoleChip',root))target.textContent=role.name||window.CortexI18n.translate('رتبة جديدة');};name.insertAdjacentHTML('afterend',emojiPalette(blocked));$('#openNameEmojis',root).onclick=()=>showNameEmojiPicker(e);}
-  for(const [id,field]of [['blueprintHoist','hoist'],['blueprintMention','mentionable']]){const input=$('#'+id,root);if(input)input.onchange=()=>{role[field]=input.checked;changed();};}
-  $$('[data-design-permission]',root).forEach(input=>{const flag=flags.find(f=>f.name===input.dataset.designPermission);input.disabled=blocked||!flag.canGrant&&!flag.granted;input.onchange=()=>{role.permissions=input.checked?[...role.permissions,flag.name]:role.permissions.filter(name=>name!==flag.name);changed();window.CortexRoleUI.update(root,state,role);};if(!flag.canGrant&&!flag.granted)input.title='البوت لا يستطيع منح هذه الصلاحية';});
-  if(blocked)$$('input,button',root).filter(node=>!node.matches('[data-role-view],#blueprintPermissionSearch,#blueprintEnabledOnly')).forEach(node=>node.disabled=true);
- };
- mount();
+  model.moveDraft = {
+    guildId: guildId(),
+    kind,
+    item,
+    targetId: target?.id ?? '',
+    placement: placement ?? 'before',
+    pending: false,
+    plan: null,
+  };
+  renderMoveDialog();
+  if (target) previewMove();
 }
-function botMessageRequest(e){
-  if(e.messageFormat!=='embed')return {channelId:e.item.id,content:e.messageContent??''};
-  const data=JSON.parse(e.messageJson||'{}');
-  if(!data||typeof data!=='object'||Array.isArray(data)||Object.keys(data).some(k=>!['content','embeds'].includes(k))||!Array.isArray(data.embeds)||!data.embeds.length)throw new Error('الكود يجب أن يحتوي embeds؛ ويمكن إضافة content اختياريًا.');
-  return {channelId:e.item.id,content:data.content??'',embeds:data.embeds};
+function moveTargets(d) {
+  const inv = inventory();
+  return (d.kind === 'role' ? inv.roles : inv.channels).filter(
+    (x) =>
+      x.id !== d.item.id &&
+      !x.readOnlyReason &&
+      !x.moveReadOnlyReason &&
+      (d.kind === 'role' ||
+        (d.item.type === 4
+          ? x.type === 4
+          : x.type === 4 ||
+            ([2, 13].includes(x.type) === [2, 13].includes(d.item.type) && x.type !== 4))),
+  );
+}
+function renderMoveDialog(error = '') {
+  const d = model.moveDraft;
+  if (!d) return;
+  const targets = moveTargets(d);
+  if (!targets.some((x) => x.id === d.targetId)) d.targetId = targets[0]?.id ?? '';
+  const target = targets.find((x) => x.id === d.targetId),
+    inside = d.kind === 'channel' && d.item.type !== 4 && target?.type === 4;
+  if (inside) d.placement = 'inside';
+  else if (d.placement === 'inside') d.placement = 'before';
+  const locked = d.pending || d.applying;
+  $('#dialogContent').innerHTML =
+    `<div class="dialog-symbol">${icon('move')}</div><h2>نقل وترتيب العنصر</h2><p>اختر وجهته وراجع النقل قبل تأكيد حفظه في Discord.</p><div class="move-source">${icon(d.kind === 'role' ? 'shield' : typeIcon(d.item.type))}<strong translate="no">${esc(d.item.name)}</strong><span>العنصر المحدد</span></div><div class="field"><label for="moveTarget">وجهة النقل</label><select id="moveTarget" translate="no" ${locked ? 'disabled' : ''}>${targets.map((x) => `<option value="${esc(x.id)}" ${x.id === d.targetId ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></div><div class="field"><label for="movePlacement">مكان العنصر</label><select id="movePlacement" ${locked ? 'disabled' : ''}>${(inside
+      ? [['inside', 'داخل القسم']]
+      : [
+          ['before', 'قبل العنصر'],
+          ['after', 'بعد العنصر'],
+        ]
+    )
+      .map(
+        ([value, label]) =>
+          `<option value="${value}" ${value === d.placement ? 'selected' : ''}>${label}</option>`,
+      )
+      .join(
+        '',
+      )}</select></div><p class="move-independent">النقل مستقل عن تعديلات الحقول غير المحفوظة.</p>${error ? `<div class="notice yellow" role="alert">${esc(error)}</div>` : ''}${d.plan ? `<div class="move-reviewed"><strong>${icon('eye')} معاينة النقل</strong><pre translate="no">${esc(d.plan.summary)}</pre></div>` : ''}${model.state.demo ? '<p>وضع العرض التوضيحي: يمكن مراجعة النقل فقط.</p>' : ''}<div class="dialog-actions"><button class="btn btn-ghost" value="cancel" ${d.applying ? 'disabled' : ''}>إلغاء</button><button type="button" class="btn btn-ghost" id="previewMove" ${locked || !targets.length ? 'disabled' : ''}>${icon('eye')} ${d.pending ? 'جارٍ معاينة النقل…' : 'معاينة النقل'}</button><button type="button" class="btn btn-primary" id="applyMove" ${locked || !d.plan || model.state.demo ? 'disabled' : ''}>${icon('check')} تأكيد النقل</button></div>`;
+  fitDialogLayout();
+  if (!$('#confirmDialog').open) $('#confirmDialog').showModal();
+  $('#moveTarget').onchange = (event) => {
+    d.targetId = event.target.value;
+    d.plan = null;
+    render();
+    renderMoveDialog();
+  };
+  $('#movePlacement').onchange = (event) => {
+    d.placement = event.target.value;
+    d.plan = null;
+    render();
+    renderMoveDialog();
+  };
+  $('#previewMove').onclick = previewMove;
+  $('#applyMove').onclick = () => {
+    if (!d.plan || model.state.demo) return;
+    d.applying = true;
+    $('#confirmDialog').close();
+    action('edit-apply', {
+      editConfirmation: { confirmed: true, guildId: d.guildId, approvalHash: d.plan.approvalHash },
+    });
+  };
+}
+function previewMove() {
+  const d = model.moveDraft;
+  if (!d || busy()) return;
+  d.pending = true;
+  d.plan = null;
+  renderMoveDialog();
+  action('edit-preview', {
+    editRequest: {
+      kind: d.kind,
+      action: 'move',
+      id: d.item.id,
+      revision: d.item.revision,
+      values: { target_id: d.targetId, placement: d.placement },
+    },
+  });
+}
+$('#confirmDialog').addEventListener('close', () => {
+  if (model.moveDraft && !model.moveDraft.applying) {
+    model.moveDraft = null;
+    render();
+  }
+});
+function roleMemberOverview(inv) {
+  const stats = inv.memberStatistics;
+  return (
+    '<section class="role-members-overview"><span class="members-overview-icon">' +
+    icon('users') +
+    '</span><div><span>أعضاء السيرفر</span><strong>' +
+    (stats?.total ?? '—') +
+    '</strong><small>' +
+    (stats?.total === null || !stats
+      ? 'العدد غير متاح حاليًا'
+      : stats.totalApproximate
+        ? 'عدد تقريبي من Discord'
+        : 'إجمالي الأعضاء، بما فيهم البوتات') +
+    '</small></div>' +
+    entityControls('role') +
+    '</section>' +
+    (stats?.roleCountsAvailable
+      ? ''
+      : '<div class="notice yellow"><div>تعذّر جلب أعداد أعضاء الرتب. يمكنك متابعة التعديل وتحديث البيانات لاحقًا.</div></div>')
+  );
+}
+function roleMemberInfo(e) {
+  if (!e.item) return '';
+  const current = inventory()?.roles.find((r) => r.id === e.item.id) ?? e.item;
+  return (
+    '<div class="role-member-info">' +
+    icon('users') +
+    '<span>أعضاء هذه الرتبة</span><strong>' +
+    (current.memberCountApproximate && current.memberCount !== null ? '≈ ' : '') +
+    (current.memberCount ?? '—') +
+    '</strong><small>' +
+    (current.memberCount == null
+      ? 'العدد غير متاح حاليًا'
+      : current.memberCountApproximate
+        ? 'عدد تقريبي من Discord'
+        : 'حسب آخر تحديث') +
+    '</small><button type="button" class="btn btn-ghost btn-small" id="grantRole" ' +
+    (busy() || e.item.readOnlyReason ? 'disabled' : '') +
+    '>' +
+    icon('users') +
+    ' منح الرتبة لعضو</button></div>'
+  );
+}
+
+function entityTree(kind) {
+  const inv = moveInventory(),
+    query = model.query.toLocaleLowerCase('ar'),
+    e = model.editor;
+  const item = (entity, child = false) =>
+    `<button class="tree-item ${child ? 'tree-child ' : ''}${e?.item?.id === entity.id ? 'active' : ''}" data-entity-id="${esc(entity.id)}" title="${esc(entity.name)}">${kind === 'role' ? `<span class="role-dot" style="background:${colorHex(entity.color) || '#8b95aa'}"></span>` : icon(typeIcon(entity.type))}<span class="label emoji">${esc(entity.name)}</span>${kind === 'role' ? `<span class="role-member-badge" title="عدد أعضاء الرتبة">${icon('users')}<b>${entity.memberCountApproximate && entity.memberCount !== null ? '≈ ' : ''}${entity.memberCount ?? '—'}</b></span>` : ''}${entity.readOnlyReason ? icon('lock') : ''}</button>`;
+  if (kind === 'role')
+    return (
+      inv.roles
+        .filter((r) => r.name.toLocaleLowerCase('ar').includes(query))
+        .map((r) => item(r))
+        .join('') || '<div class="no-result">لا توجد رتبة بهذا الاسم.</div>'
+    );
+  if (query)
+    return (
+      inv.channels
+        .filter((c) => c.name.toLocaleLowerCase('ar').includes(query))
+        .map((c) => item(c))
+        .join('') || '<div class="no-result">لا توجد قناة بهذا الاسم.</div>'
+    );
+  return (
+    inv.channels
+      .filter((c) => c.type === 4)
+      .map(
+        (c) =>
+          `<details class="tree-group" data-category-id="${esc(c.id)}" open><summary>${icon('chevron')}<span class="emoji">${esc(c.name)}</span><button class="category-select" type="button" data-entity-id="${esc(c.id)}" aria-label="تعديل القسم ${esc(c.name)}">${icon('settings')}</button></summary>${inv.channels
+            .filter((ch) => ch.parent_id === c.id)
+            .sort(
+              (a, b) =>
+                ([2, 13].includes(a.type) ? 1 : 0) - ([2, 13].includes(b.type) ? 1 : 0) ||
+                (a.position ?? 0) - (b.position ?? 0),
+            )
+            .map((ch) => item(ch, true))
+            .join('')}</details>`,
+      )
+      .join('') +
+    inv.channels
+      .filter((c) => c.type !== 4 && !inv.channels.some((parent) => parent.id === c.parent_id))
+      .map((c) => item(c))
+      .join('')
+  );
+}
+function bindTree(kind) {
+  const groups = workspaceViews.get(viewKey())?.groups;
+  $$('[data-category-id]').forEach((g) => {
+    if (groups && Object.hasOwn(groups, g.dataset.categoryId))
+      g.open = groups[g.dataset.categoryId];
+  });
+  $$('[data-entity-id]').forEach(
+    (b) =>
+      (b.onclick = (event) => {
+        event.preventDefault();
+        const list = kind === 'role' ? inventory().roles : inventory().channels;
+        setEditor(
+          kind,
+          list.find((x) => x.id === b.dataset.entityId),
+        );
+        render();
+      }),
+  );
+  window.CortexArrange?.mount($('#entityTree'), {
+    kind,
+    inventory: moveInventory(),
+    busy: busy() || !!model.moveDraft,
+    query: model.query,
+    onMove: (item, target, placement) => startMove(kind, item, target, placement),
+  });
+}
+function accessNotice(e) {
+  const reason = e.item?.readOnlyReason;
+  const hierarchy = reason === 'role at or above the bot hierarchy';
+  const reasons = {
+    '@everyone': 'رتبة الجميع محفوظة وفق سياسة هذا المشروع.',
+    'Discord/integration-managed role':
+      'هذه رتبة يديرها Discord أو أحد التكاملات؛ تُدار من إعدادات التكامل نفسه.',
+    'role assigned to Cortex Manager': 'هذه رتبة يحملها البوت؛ لا يعدّل البرنامج رتبه الخاصة.',
+  };
+  const explanation = hierarchy
+    ? 'Discord يمنع البوت من تعديل رتبة أعلى من أعلى رتبة يحملها أو مساوية لها، حتى مع Administrator.'
+    : (reasons[reason] ?? reason);
+  const steps = hierarchy
+    ? `<p>من Discord افتح <strong>إعدادات السيرفر ← الرتب</strong>، ثم ارفع رتبة البوت <strong>${esc(inventory()?.botRole?.name ?? 'Cortex Manager')}</strong> فوق الرتب التي تريد إدارتها.</p><p>بعد ذلك اضغط تحديث لتفعيل الصلاحيات المتاحة.</p><button class="btn btn-ghost btn-small" type="button" id="reloadRoleAccess">تحديث صلاحية إدارة الرتبة</button>`
+    : '';
+  return `<div class="notice ${hierarchy ? 'yellow' : 'green'}">${icon('lock')}<div><strong>${hierarchy ? 'يلزم رفع رتبة البوت في Discord' : e.kind === 'role' ? 'هذه الرتبة محفوظة' : 'هذا العنصر محفوظ'}</strong>${esc(explanation)}${steps}</div></div>`;
+}
+function inspector(kind) {
+  const e = model.editor;
+  if (!e) return '<div class="empty-state"><h2>اختر عنصرًا من القائمة</h2></div>';
+  if (kind === 'role') return liveRoleInspector(e);
+  const readOnly = e.item?.readOnlyReason;
+  return `<div class="inspector-hero"><div class="entity-symbol">${icon(typeIcon(Number(e.values.type)))}</div><div class="entity-title"><strong class="emoji">${esc(e.values.name || 'مساحة جديدة')}</strong><small>${esc(typeLabel(Number(e.values.type)))} <code>${esc(e.item?.id ?? 'NEW')}</code></small></div><span class="entity-status">${model.tab === 'messages' ? 'رسالة باسم البوت' : readOnly ? 'محمية · للعرض فقط' : e.action === 'create' ? 'مسودة جديدة' : 'إعدادات العنصر'}</span>${entityControls(kind)}</div><div class="inspector-body ${model.tab === 'messages' ? 'message-inspector-body' : ''}">${(model.state.error || model.localError) && !busy() ? `<div class="notice yellow" role="alert"><div><strong>تعذّرت العملية؛ راجع السبب قبل المحاولة مجددًا</strong>${esc(model.state.error || model.localError)}<br><button class="btn btn-ghost btn-small" type="button" id="reloadEditor">تحديث بيانات السيرفر</button></div></div>` : ''}${readOnly && model.tab !== 'messages' ? accessNotice(e) : ''}<div class="page-tabs"><button class="page-tab ${model.tab === 'general' ? 'active' : ''}" data-editor-tab="general">إعدادات القناة</button><button class="page-tab ${model.tab === 'permissions' ? 'active' : ''}" data-editor-tab="permissions">أذونات الوصول</button>${e.item && [0, 2, 5].includes(e.item.type) ? `<button class="page-tab ${model.tab === 'messages' ? 'active' : ''}" data-editor-tab="messages">رسائل البوت</button>` : ''}</div>${model.tab === 'messages' ? messageComposer(e) : model.tab === 'general' ? channelGeneral(e, readOnly) : channelPermissions(e, readOnly)}${e.approval && model.tab !== 'messages' ? `<div class="review-box" id="editReview"><h3>${icon('eye')} تمت معاينة التعديل</h3><div class="review-summary">${esc(e.approval.summary)}</div></div>` : ''}</div><div class="inspector-footer ${model.tab === 'messages' ? 'hidden' : ''}"><span class="save-note">${icon(readOnly ? 'lock' : 'info')}<span id="draftStatus">${readOnly ? 'هذه البيانات للعرض فقط' : model.state.demo ? 'وضع العرض · الحفظ الحقيقي معطّل' : e.approval ? 'الخطة جاهزة. الحفظ يتطلب تأكيدك.' : 'مسودة محلية · راجع التعديل قبل الحفظ'}</span></span><div class="editor-actions">${button('معاينة التعديل', 'reviewEdit', 'btn-ghost', 'eye', busy() || !!readOnly)}${button('حفظ التغيير', 'applyEdit', 'btn-primary', 'check', busy() || !!readOnly || !e.approval || model.state.demo)}</div></div>`;
+}
+function rulesTemplate() {
+  const rules = [
+    [
+      '🤝 الاحترام أولًا',
+      'عامل الجميع باحترام. يُمنع التنمّر والإهانة والكراهية والتمييز.',
+      '🤝 Respect everyone',
+      'Treat everyone with respect. Bullying, harassment, hate speech and discrimination are prohibited.',
+    ],
+    [
+      '🛡️ الخصوصية والسلامة',
+      'لا تنشر معلومات شخصية أو محادثات خاصة دون موافقة. يُمنع التهديد والاحتيال والروابط الضارة.',
+      '🛡️ Privacy & safety',
+      'Do not share personal information or private conversations without consent. Threats, scams and malicious links are prohibited.',
+    ],
+    [
+      '💬 تنظيم المحادثات',
+      'استخدم القناة المناسبة. تجنّب السبام وتكرار الرسائل والمنشن المزعج.',
+      '💬 Keep chats organized',
+      'Use the appropriate channel. Avoid spam, repeated messages and excessive mentions.',
+    ],
+    [
+      '🎮 اللعب النظيف',
+      'يُمنع الغش واستغلال الثغرات وتخريب اللعب. تنافس بروح رياضية واحترم زملاءك.',
+      '🎮 Fair play',
+      'No cheating, exploit abuse or intentional disruption. Play fairly and respect your teammates.',
+    ],
+    [
+      '🔞 محتوى مناسب للجميع',
+      'يُمنع المحتوى الجنسي أو العنيف الصادم أو غير القانوني، وأي محتوى يخالف إرشادات مجتمع Discord.',
+      '🔞 Keep content appropriate',
+      'No sexual, graphic or illegal content, or content that violates Discord Community Guidelines.',
+    ],
+    [
+      '📢 الإعلانات والروابط',
+      'الإعلانات وروابط الدعوة والترويج تحتاج موافقة الإدارة مسبقًا، ويشمل ذلك الرسائل الخاصة غير المرغوبة.',
+      '📢 Advertising & links',
+      'Advertising, invite links and promotions require prior staff approval, including unsolicited promotional DMs.',
+    ],
+    [
+      '🎙️ آداب الصوت',
+      'تجنّب الصراخ والأصوات المزعجة. لا تسجّل الآخرين أو تبث محادثاتهم دون موافقتهم.',
+      '🎙️ Voice etiquette',
+      'Avoid shouting and disruptive audio. Do not record or stream other people’s conversations without their consent.',
+    ],
+    [
+      '🎫 البلاغات والإدارة',
+      'بلّغ عن المخالفات عبر قناة الدعم دون تصعيد علني. قد تشمل الإجراءات التنبيه أو التقييد أو الإبعاد بحسب الحالة؛ يمكنك طلب مراجعة عبر الدعم.',
+      '🎫 Reports & moderation',
+      'Report issues through support without public escalation. Actions may include warnings, restrictions or removal depending on the situation; request a review through support.',
+    ],
+  ];
+  return {
+    embeds: [
+      {
+        title: '📜 قوانين المجتمع | ' + guildName(),
+        description:
+          'أهلًا بك! مساحة للعب والتعارف بروح طيبة. اقرأ القوانين وساعدنا نحافظ على مجتمع آمن وممتع للجميع.',
+        color: 9274367,
+        fields: rules.map((r) => ({ name: r[0], value: r[1], inline: false })),
+        footer: { text: 'شكرًا لالتزامك • نتمنى لك وقتًا ممتعًا 🎮' },
+      },
+      {
+        title: '📜 Community Rules | ' + guildName(),
+        description:
+          'Welcome! A place to play, connect and enjoy good company. Please read the rules and help keep our community safe and welcoming.',
+        color: 5025616,
+        fields: rules.map((r) => ({ name: r[2], value: r[3], inline: false })),
+        footer: { text: 'Thank you for doing your part • Enjoy your stay 🎮' },
+      },
+    ],
+  };
+}
+const liveRoleStates = new Map();
+const liveRoleFlags = (e) =>
+  e.item?.flags ??
+  inventory().permissions.map((p) => ({ ...p, granted: false, canGrant: p.granted }));
+function liveRoleContext(e) {
+  const key = guildId() + ':' + (e.item?.id ?? 'new');
+  if (!liveRoleStates.has(key)) liveRoleStates.set(key, { editorScrolls: {}, roleViews: {} });
+  const state = liveRoleStates.get(key),
+    flags = liveRoleFlags(e);
+  state.permissions = flags.map((flag) => flag.name);
+  state.roleViews[key] = model.tab === 'general' ? 'appearance' : 'permissions';
+  return {
+    state,
+    flags,
+    role: {
+      key,
+      ...e.values,
+      permissions: flags
+        .filter((flag) => e.permissionChanges[flag.name] ?? flag.granted)
+        .map((flag) => flag.name),
+    },
+  };
+}
+function liveRoleInspector(e) {
+  const readOnly = e.item?.readOnlyReason,
+    { state, role } = liveRoleContext(e);
+  return `<div class="live-role-topbar">${icon(readOnly ? 'lock' : 'shield')}<span>${e.action === 'create' ? 'رتبة جديدة' : 'رتبة في السيرفر'}</span><code translate="no">${esc(e.item?.id ?? 'NEW')}</code><span class="entity-status">${readOnly ? 'محمية · للعرض فقط' : e.action === 'create' ? 'مسودة جديدة' : 'إعدادات العنصر'}</span></div><div class="inspector-body live-role-body">${(model.state.error || model.localError) && !busy() ? `<div class="notice yellow" role="alert"><div><strong>تعذّرت العملية؛ راجع السبب قبل المحاولة مجددًا</strong>${esc(model.state.error || model.localError)}<br><button class="btn btn-ghost btn-small" type="button" id="reloadEditor">تحديث بيانات السيرفر</button></div></div>` : ''}${roleMemberInfo(e)}${readOnly ? accessNotice(e) : ''}<div id="liveRoleUI" class="live-role-ui">${window.CortexRoleUI.render(state, role, { permissionLabel, live: true })}</div>${e.approval ? `<div class="review-box" id="editReview"><h3>${icon('eye')} تمت معاينة التعديل</h3><div class="review-summary">${esc(e.approval.summary)}</div></div>` : ''}</div><div class="inspector-footer"><span class="save-note">${icon(readOnly ? 'lock' : 'info')}<span id="draftStatus">${readOnly ? 'هذه البيانات للعرض فقط' : model.state.demo ? 'وضع العرض · الحفظ الحقيقي معطّل' : e.approval ? 'الخطة جاهزة. الحفظ يتطلب تأكيدك.' : 'مسودة محلية · راجع التعديل قبل الحفظ'}</span></span><div class="editor-actions">${button('معاينة التعديل', 'reviewEdit', 'btn-ghost', 'eye', busy() || !!readOnly)}${button('حفظ التغيير', 'applyEdit', 'btn-primary', 'check', busy() || !!readOnly || !e.approval || model.state.demo)}</div></div>`;
+}
+function bindLiveRole(e) {
+  const root = $('#liveRoleUI');
+  if (!root) return;
+  const { state, flags, role } = liveRoleContext(e),
+    blocked = busy() || !!e.item?.readOnlyReason;
+  const changed = () => {
+    for (const field of ['name', 'color', 'hoist', 'mentionable']) e.values[field] = role[field];
+    for (const flag of flags) {
+      const value = role.permissions.includes(flag.name);
+      if (value === flag.granted) delete e.permissionChanges[flag.name];
+      else e.permissionChanges[flag.name] = value;
+    }
+    invalidate();
+  };
+  const mount = () => {
+    window.CortexRoleUI.bind(root, state, role, changed, () => {
+      captureView();
+      model.tab = state.roleViews[role.key] === 'appearance' ? 'general' : 'permissions';
+      root.innerHTML = window.CortexRoleUI.render(state, role, { permissionLabel, live: true });
+      mount();
+      renderedInspectorTab = model.tab;
+    });
+    const name = $('#editName', root);
+    if (name) {
+      name.oninput = () => {
+        role.name = name.value;
+        changed();
+        for (const target of $$('#blueprintRoleTitle,#blueprintRoleChip', root))
+          target.textContent = role.name || window.CortexI18n.translate('رتبة جديدة');
+      };
+      name.insertAdjacentHTML('afterend', emojiPalette(blocked));
+      $('#openNameEmojis', root).onclick = () => showNameEmojiPicker(e);
+    }
+    for (const [id, field] of [
+      ['blueprintHoist', 'hoist'],
+      ['blueprintMention', 'mentionable'],
+    ]) {
+      const input = $('#' + id, root);
+      if (input)
+        input.onchange = () => {
+          role[field] = input.checked;
+          changed();
+        };
+    }
+    $$('[data-design-permission]', root).forEach((input) => {
+      const flag = flags.find((f) => f.name === input.dataset.designPermission);
+      input.disabled = blocked || (!flag.canGrant && !flag.granted);
+      input.onchange = () => {
+        role.permissions = input.checked
+          ? [...role.permissions, flag.name]
+          : role.permissions.filter((name) => name !== flag.name);
+        changed();
+        window.CortexRoleUI.update(root, state, role);
+      };
+      if (!flag.canGrant && !flag.granted) input.title = 'البوت لا يستطيع منح هذه الصلاحية';
+    });
+    if (blocked)
+      $$('input,button', root)
+        .filter(
+          (node) =>
+            !node.matches('[data-role-view],#blueprintPermissionSearch,#blueprintEnabledOnly'),
+        )
+        .forEach((node) => (node.disabled = true));
+  };
+  mount();
+}
+function botMessageRequest(e) {
+  if (e.messageFormat !== 'embed') return { channelId: e.item.id, content: e.messageContent ?? '' };
+  const data = JSON.parse(e.messageJson || '{}');
+  if (
+    !data ||
+    typeof data !== 'object' ||
+    Array.isArray(data) ||
+    Object.keys(data).some((k) => !['content', 'embeds'].includes(k)) ||
+    !Array.isArray(data.embeds) ||
+    !data.embeds.length
+  )
+    throw new Error('الكود يجب أن يحتوي embeds؛ ويمكن إضافة content اختياريًا.');
+  return { channelId: e.item.id, content: data.content ?? '', embeds: data.embeds };
 }
 // Render a small escaped subset of Discord Markdown. No raw HTML or URLs execute.
-function embedText(text){return esc(text).replace(/\*\*([^*\n]+)\*\*/g,'<strong>$1</strong>').replace(/`([^`\n]+)`/g,'<code>$1</code>');}
-function messageDesign(p){return `${p.content?`<div class="message-bubble">${embedText(p.content)}</div>`:''}${(p.embeds??[]).map(e=>`<article class="discord-embed" style="--embed-color:${colorHex(e.color??9274367)}" dir="auto">${e.title?`<h3 dir="auto">${embedText(e.title)}</h3>`:''}${e.description?`<p dir="auto">${embedText(e.description)}</p>`:''}<div class="embed-fields">${(e.fields??[]).map(f=>`<section class="embed-field ${f.inline?'inline':''}" dir="auto"><h4>${embedText(f.name)}</h4><p>${embedText(f.value)}</p></section>`).join('')}</div>${e.footer?.text?`<footer dir="auto">${embedText(e.footer.text)}</footer>`:''}</article>`).join('')}`;}
-function messageComposer(e){
-  const reason=e.item?.messageReadOnlyReason??(!e.item?'أنشئ الغرفة أولًا.':null),p=e.messageApproval,result=model.state.messageResult,embed=e.messageFormat==='embed';
-  return `<div class="message-composer"><div class="notice">${icon('log')}<div><strong>رسالة إلى: ${esc(e.item?.name??'')}</strong>ستظهر باسم البوت بعد المعاينة والتأكيد.</div></div>${reason?`<div class="notice yellow">${icon('lock')}<div>${esc(reason)}</div></div>`:''}<div class="message-design-tools"><div class="field"><label for="messageFormat">نوع الرسالة</label><select id="messageFormat" ${busy()?'disabled':''}><option value="text" ${!embed?'selected':''}>نص عادي</option><option value="embed" ${embed?'selected':''}>بطاقات مصمّمة · Embed JSON</option></select></div>${button('قالب قوانين عربي / English','loadRulesTemplate','btn-ghost','log',busy())}</div>${embed?'<p class="field-help">عدّل نصوص القالب داخل علامات الاقتباس. color رقم اللون؛ fields فقرات القوانين. الكود يتحوّل إلى بطاقات عند المعاينة، ولا يُنشر كنص كود.</p>':''}<div class="field"><label for="botMessage">${embed?'كود تصميم الرسالة · JSON':'نص الرسالة / التعليق'}</label><textarea id="botMessage" class="${embed?'json-editor':''}" ${embed?'dir="ltr" spellcheck="false" maxlength="30000"':'maxlength="2000"'} rows="${embed?12:7}" placeholder="${embed?'أضف قالب القوانين أو أدخل كود البطاقات…':'اكتب الرسالة التي تريد نشرها…'}" ${busy()||reason?'disabled':''}>${esc(embed?e.messageJson??'':e.messageContent??'')}</textarea><span class="field-help" id="messageCount">${embed?'حتى 10 بطاقات ومجموع 6000 حرف في نصوصها.':(e.messageContent??'').length+' / 2000'} · المنشن التلقائي معطّل.</span></div>${p?`<div class="review-box" id="messageReview" tabindex="-1"><h3>معاينة الرسالة · ${esc(p.channelName)}</h3><p class="field-help">معاينة تقريبية؛ الخط والمسافات قد تختلف في Discord.</p><div class="discord-message-preview">${messageDesign(p)}</div></div>`:''}${result?.channelId===e.item?.id?`<div class="notice ${result.success?'green':'yellow'}"><div>${result.success?'تم إرسال الرسالة بنجاح.':'لم يتأكد الإرسال. راجع الغرفة قبل إعداد رسالة أخرى.'}</div></div>`:''}<div class="message-actions">${button('معاينة الرسالة','previewBotMessage','btn-ghost','eye',busy()||!!reason)}${button('إرسال باسم البوت','sendBotMessage','btn-primary','play',busy()||!!reason||!p||model.state.demo)}</div>${model.state.demo?'<p class="field-help">وضع العرض التوضيحي: الإرسال الحقيقي معطّل.</p>':''}</div>`;
+function embedText(text) {
+  return esc(text)
+    .replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/`([^`\n]+)`/g, '<code>$1</code>');
 }
-function bindMessageComposer(e){
-  const input=$('#botMessage');if(!input)return;
-  const invalidateMessage=()=>{e.messageApproval=null;model.awaitingMessage=false;model.messageSignature=null;};
-  $('#messageFormat').onchange=event=>{e.messageFormat=event.target.value;invalidateMessage();render();};
-  $('#loadRulesTemplate').onclick=()=>{const load=()=>{e.messageFormat='embed';e.messageJson=JSON.stringify(rulesTemplate(),null,2);invalidateMessage();render();};if(e.messageJson){showDialog('<h2>استبدال كود التصميم؟</h2><p>سيُستبدل كود المسودة بقالب القوانين. لن تُرسل أي رسالة.</p><div class="dialog-actions"><button class="btn btn-ghost" value="cancel">إلغاء</button><button class="btn btn-primary" type="button" id="replaceRules">استخدام القالب</button></div>');$('#replaceRules').onclick=()=>{$('#confirmDialog').close();load();};}else load();};
-  input.oninput=()=>{if(e.messageFormat==='embed')e.messageJson=input.value;else e.messageContent=input.value;invalidateMessage();$('#sendBotMessage').disabled=true;$('#messageReview')?.remove();if(e.messageFormat!=='embed')$('#messageCount').textContent=input.value.length+' / 2000 · المنشن التلقائي معطّل.';};
-  $('#previewBotMessage').onclick=()=>{let request;try{request=botMessageRequest(e);if(!request.content.trim()&&!request.embeds)throw new Error('اكتب الرسالة أولًا.');}catch(error){toast(error instanceof SyntaxError?'صيغة JSON غير صحيحة؛ راجع الفواصل وعلامات الاقتباس.':error.message,'error');input.focus();return;}invalidateMessage();e.approval=null;model.awaitingEdit=false;model.reviewSignature=null;model.messageSignature=JSON.stringify(request);model.awaitingMessage=true;action('message-preview',{messageRequest:request});};
-  $('#sendBotMessage').onclick=()=>{const p=e.messageApproval;if(!p||model.state.demo)return;showDialog(`<div class="dialog-symbol">${icon('log')}</div><h2>تأكيد إرسال الرسالة</h2><p>السيرفر: <strong translate="no">${esc(guildName())}</strong><br>الغرفة: <strong>${esc(p.channelName)}</strong></p><div class="message-confirm-preview">${messageDesign(p)}</div><p>ستظهر باسم البوت. الإشارات التلقائية معطّلة.</p><div class="dialog-actions"><button class="btn btn-ghost" value="cancel">إلغاء</button><button class="btn btn-primary" type="button" id="confirmBotMessage">تأكيد الإرسال</button></div>`);$('#confirmBotMessage').onclick=()=>{$('#confirmDialog').close();e.messageApproval=null;action('message-send',{messageConfirmation:{confirmed:true,guildId:guildId(),channelId:p.channelId,approvalHash:p.approvalHash}});};};
+function messageDesign(p) {
+  return `${p.content ? `<div class="message-bubble">${embedText(p.content)}</div>` : ''}${(p.embeds ?? []).map((e) => `<article class="discord-embed" style="--embed-color:${colorHex(e.color ?? 9274367)}" dir="auto">${e.title ? `<h3 dir="auto">${embedText(e.title)}</h3>` : ''}${e.description ? `<p dir="auto">${embedText(e.description)}</p>` : ''}<div class="embed-fields">${(e.fields ?? []).map((f) => `<section class="embed-field ${f.inline ? 'inline' : ''}" dir="auto"><h4>${embedText(f.name)}</h4><p>${embedText(f.value)}</p></section>`).join('')}</div>${e.footer?.text ? `<footer dir="auto">${embedText(e.footer.text)}</footer>` : ''}</article>`).join('')}`;
 }
-
-function field(label,id,value,type='text',extra='',disabled=false,help=''){return `<div class="field ${extra}"><label for="${id}">${label}</label><input type="${type}" id="${id}" value="${esc(value)}" ${disabled?'disabled':''}>${id==='editName'?emojiPalette(disabled):''}${help?`<span class="field-help">${help}</span>`:''}</div>`;}
-function emojiPalette(disabled){return `<div class="name-emoji-tools"><button class="btn btn-ghost" type="button" id="openNameEmojis" ${disabled?'disabled':''}>${icon('spark')} مكتبة الإيموجي ${icon('plus')}</button><span>اختر من المكتبة أو أضف إيموجي من عندك</span></div>`;}
-const nameEmojiGroups=[
-  {id:'gaming',name:'الألعاب',items:[['🎮','ألعاب gaming controller'],['🕹️','تحكم joystick'],['🎯','هدف target'],['⚔️','قتال swords'],['🏆','بطولة trophy'],['🥇','فوز medal'],['🚀','صاروخ rocket'],['🏎️','سباق racing'],['🎲','نرد dice'],['♟️','شطرنج chess'],['🧩','ألغاز puzzle'],['🔥','نار fire']]},
-  {id:'community',name:'المجتمع',items:[['💬','دردشة chat'],['👋','ترحيب welcome'],['🤝','تعارف handshake'],['🎉','احتفال party'],['🎙️','ميكروفون microphone'],['🎧','سماعة headphones'],['🔊','صوت speaker'],['☕','استراحة coffee'],['🌙','ليل moon'],['🌿','هدوء leaf'],['💡','اقتراح idea'],['📸','صور camera']]},
-  {id:'staff',name:'الإدارة',items:[['🛡️','حماية shield'],['👑','تاج crown'],['💎','مميز diamond'],['📜','قوانين rules'],['📢','إعلان announcement'],['📋','مهام clipboard'],['📌','مثبت pin'],['🎫','دعم ticket'],['🔒','خاص lock'],['🔑','مفتاح key'],['⚙️','إعدادات settings'],['📊','إحصائيات stats']]},
-  {id:'style',name:'لمسات مميزة',items:[['✨','لمعة sparkles'],['🌟','نجم star'],['⚡','برق lightning'],['💫','تألق glow'],['🔮','سحر crystal'],['🪐','كوكب planet'],['🌌','فضاء galaxy'],['🦋','فراشة butterfly'],['🎨','تصميم art'],['💜','قلب heart'],['🌊','موج wave'],['🪷','لوتس lotus']]}
-];
-function validNameEmoji(value){
-  if(!value||value.length>32||value!==value.trim())return false;
-  const parts=[...new Intl.Segmenter(undefined,{granularity:'grapheme'}).segment(value)];
-  return parts.length===1&&(/\p{Extended_Pictographic}|\p{Regional_Indicator}|\u20e3/u.test(value))&&!/[<>\r\n]/.test(value);
+function messageComposer(e) {
+  const reason = e.item?.messageReadOnlyReason ?? (!e.item ? 'أنشئ الغرفة أولًا.' : null),
+    p = e.messageApproval,
+    result = model.state.messageResult,
+    embed = e.messageFormat === 'embed';
+  return `<div class="message-composer"><div class="notice">${icon('log')}<div><strong>رسالة إلى: ${esc(e.item?.name ?? '')}</strong>ستظهر باسم البوت بعد المعاينة والتأكيد.</div></div>${reason ? `<div class="notice yellow">${icon('lock')}<div>${esc(reason)}</div></div>` : ''}<div class="message-design-tools"><div class="field"><label for="messageFormat">نوع الرسالة</label><select id="messageFormat" ${busy() ? 'disabled' : ''}><option value="text" ${!embed ? 'selected' : ''}>نص عادي</option><option value="embed" ${embed ? 'selected' : ''}>بطاقات مصمّمة · Embed JSON</option></select></div>${button('قالب قوانين عربي / English', 'loadRulesTemplate', 'btn-ghost', 'log', busy())}</div>${embed ? '<p class="field-help">عدّل نصوص القالب داخل علامات الاقتباس. color رقم اللون؛ fields فقرات القوانين. الكود يتحوّل إلى بطاقات عند المعاينة، ولا يُنشر كنص كود.</p>' : ''}<div class="field"><label for="botMessage">${embed ? 'كود تصميم الرسالة · JSON' : 'نص الرسالة / التعليق'}</label><textarea id="botMessage" class="${embed ? 'json-editor' : ''}" ${embed ? 'dir="ltr" spellcheck="false" maxlength="30000"' : 'maxlength="2000"'} rows="${embed ? 12 : 7}" placeholder="${embed ? 'أضف قالب القوانين أو أدخل كود البطاقات…' : 'اكتب الرسالة التي تريد نشرها…'}" ${busy() || reason ? 'disabled' : ''}>${esc(embed ? (e.messageJson ?? '') : (e.messageContent ?? ''))}</textarea><span class="field-help" id="messageCount">${embed ? 'حتى 10 بطاقات ومجموع 6000 حرف في نصوصها.' : (e.messageContent ?? '').length + ' / 2000'} · المنشن التلقائي معطّل.</span></div>${p ? `<div class="review-box" id="messageReview" tabindex="-1"><h3>معاينة الرسالة · ${esc(p.channelName)}</h3><p class="field-help">معاينة تقريبية؛ الخط والمسافات قد تختلف في Discord.</p><div class="discord-message-preview">${messageDesign(p)}</div></div>` : ''}${result?.channelId === e.item?.id ? `<div class="notice ${result.success ? 'green' : 'yellow'}"><div>${result.success ? 'تم إرسال الرسالة بنجاح.' : 'لم يتأكد الإرسال. راجع الغرفة قبل إعداد رسالة أخرى.'}</div></div>` : ''}<div class="message-actions">${button('معاينة الرسالة', 'previewBotMessage', 'btn-ghost', 'eye', busy() || !!reason)}${button('إرسال باسم البوت', 'sendBotMessage', 'btn-primary', 'play', busy() || !!reason || !p || model.state.demo)}</div>${model.state.demo ? '<p class="field-help">وضع العرض التوضيحي: الإرسال الحقيقي معطّل.</p>' : ''}</div>`;
 }
-function nameWithEmoji(name,emoji){
-  const first=[...new Intl.Segmenter(undefined,{granularity:'grapheme'}).segment(name)][0]?.segment;
-  if(first&&validNameEmoji(first))name=name.slice(first.length).replace(/^[\s・·|｜•:—-]+/u,'');
-  return emoji+'・'+name;
-}
-function showNameEmojiPicker(e){
-  const nameInput=$('#editName');if(!nameInput||nameInput.disabled||busy()||model.editor!==e)return;
-  let group='all',selected='',own=false;const original=nameInput.value;
-  showDialog(`<div class="emoji-picker-heading"><div class="dialog-symbol">${icon('spark')}</div><div><h2>لمسة تعبّر عن مجتمعك</h2><p>مكتبة إيموجي لأسماء الغرف والأقسام والرتب</p></div></div><div class="emoji-picker-search">${icon('search')}<input type="search" id="nameEmojiSearch" aria-label="البحث في مكتبة الإيموجي" placeholder="ابحث بالعربي أو English…"></div><div class="emoji-categories" role="group" aria-label="تصنيفات الإيموجي"><button type="button" data-emoji-group="all" class="active">الكل</button>${nameEmojiGroups.map(g=>`<button type="button" data-emoji-group="${g.id}">${g.name}</button>`).join('')}<button type="button" data-emoji-group="mine">إضافاتي</button></div><div class="name-emoji-grid" id="nameEmojiGrid" role="group" aria-label="اختيار إيموجي"></div><div class="own-emoji-field"><label for="ownNameEmoji">إيموجي من عندك</label><div><input type="text" id="ownNameEmoji" maxlength="32" placeholder="الصق إيموجي هنا مثل 🐉" autocomplete="off"><button class="btn btn-ghost" type="button" id="chooseOwnEmoji">اختيار</button></div><small id="ownEmojiHelp">للأسماء استخدم إيموجي Unicode. صور وإيموجيات Discord المخصصة لا تظهر كصور داخل اسم القناة؛ يمكن استخدامها في الرسائل.</small></div><div class="emoji-name-preview"><span>معاينة الاسم</span><strong dir="auto" id="emojiNamePreview">${esc(original)}</strong></div><div class="dialog-actions"><button class="btn btn-ghost" value="cancel">إلغاء</button><button class="btn btn-primary" type="button" id="useNameEmoji" disabled>استخدام الإيموجي ${icon('check')}</button></div>`);
-  const draw=()=>{
-    const query=$('#nameEmojiSearch').value.trim().toLowerCase();
-    const list=group==='mine'?(model.customNameEmojis??[]).map(x=>[x,'إيموجي مضاف']):nameEmojiGroups.filter(g=>group==='all'||g.id===group).flatMap(g=>g.items);
-    const filtered=list.filter(([emoji,words])=>!query||(emoji+' '+words).toLowerCase().includes(query));
-    $('#nameEmojiGrid').innerHTML=filtered.length?filtered.map(([emoji,words])=>`<button type="button" class="emoji-choice emoji ${emoji===selected?'selected':''}" data-name-emoji="${esc(emoji)}" aria-label="${esc(words.split(' ')[0]+' '+emoji)}" title="${esc(words)}" aria-pressed="${emoji===selected}">${esc(emoji)}</button>`).join(''):`<p class="emoji-empty">${group==='mine'?'الإيموجيات التي تضيفها تظهر هنا طوال الجلسة.':'لا توجد نتائج. جرّب كلمة أخرى أو الصق إيموجي من عندك.'}</p>`;
-    $$('[data-name-emoji]').forEach(b=>b.onclick=()=>{selected=b.dataset.nameEmoji;own=false;$('#ownNameEmoji').value='';updateSelection();draw();});
+function bindMessageComposer(e) {
+  const input = $('#botMessage');
+  if (!input) return;
+  const invalidateMessage = () => {
+    e.messageApproval = null;
+    model.awaitingMessage = false;
+    model.messageSignature = null;
   };
-  const updateSelection=()=>{$('#emojiNamePreview').textContent=selected?nameWithEmoji(original,selected):original;$('#useNameEmoji').disabled=!selected;};
-  $$('[data-emoji-group]').forEach(b=>b.onclick=()=>{group=b.dataset.emojiGroup;$$('[data-emoji-group]').forEach(x=>x.classList.toggle('active',x===b));draw();});
-  $('#nameEmojiSearch').oninput=draw;
-  $('#nameEmojiSearch').onkeydown=event=>{if(event.key==='Enter')event.preventDefault();};
-  const chooseOwn=()=>{const value=$('#ownNameEmoji').value.trim();if(!validNameEmoji(value)){$('#ownEmojiHelp').textContent='الصق إيموجي واحدًا؛ الصور وأكواد مثل <:name:id> غير مدعومة في الأسماء.';$('#ownNameEmoji').setAttribute('aria-invalid','true');return;}$('#ownNameEmoji').removeAttribute('aria-invalid');$('#ownEmojiHelp').textContent='جاهز للاستخدام. سيظهر ضمن «إضافاتي» طوال هذه الجلسة.';selected=value;own=true;updateSelection();draw();};
-  $('#chooseOwnEmoji').onclick=chooseOwn;
-  $('#ownNameEmoji').oninput=()=>{selected='';own=false;updateSelection();draw();};
-  $('#ownNameEmoji').onkeydown=event=>{if(event.key==='Enter'){event.preventDefault();chooseOwn();}};
-  $('#useNameEmoji').onclick=()=>{if(!selected||busy()||model.editor!==e||$('#editName')?.disabled)return;const next=nameWithEmoji(original,selected);if(next.length>100){toast('الاسم مع الإيموجي يتجاوز 100 حرف. اختصر الاسم أولًا.','error');return;}if(own)model.customNameEmojis=[selected,...(model.customNameEmojis??[]).filter(x=>x!==selected)].slice(0,30);e.values.name=next;$('#editName').value=next;$('#editName').dispatchEvent(new Event('input',{bubbles:true}));invalidate();$('#confirmDialog').close();$('#editName').focus();};
-  draw();$('#nameEmojiSearch').focus();
+  $('#messageFormat').onchange = (event) => {
+    e.messageFormat = event.target.value;
+    invalidateMessage();
+    render();
+  };
+  $('#loadRulesTemplate').onclick = () => {
+    const load = () => {
+      e.messageFormat = 'embed';
+      e.messageJson = JSON.stringify(rulesTemplate(), null, 2);
+      invalidateMessage();
+      render();
+    };
+    if (e.messageJson) {
+      showDialog(
+        '<h2>استبدال كود التصميم؟</h2><p>سيُستبدل كود المسودة بقالب القوانين. لن تُرسل أي رسالة.</p><div class="dialog-actions"><button class="btn btn-ghost" value="cancel">إلغاء</button><button class="btn btn-primary" type="button" id="replaceRules">استخدام القالب</button></div>',
+      );
+      $('#replaceRules').onclick = () => {
+        $('#confirmDialog').close();
+        load();
+      };
+    } else load();
+  };
+  input.oninput = () => {
+    if (e.messageFormat === 'embed') e.messageJson = input.value;
+    else e.messageContent = input.value;
+    invalidateMessage();
+    $('#sendBotMessage').disabled = true;
+    $('#messageReview')?.remove();
+    if (e.messageFormat !== 'embed')
+      $('#messageCount').textContent = input.value.length + ' / 2000 · المنشن التلقائي معطّل.';
+  };
+  $('#previewBotMessage').onclick = () => {
+    let request;
+    try {
+      request = botMessageRequest(e);
+      if (!request.content.trim() && !request.embeds) throw new Error('اكتب الرسالة أولًا.');
+    } catch (error) {
+      toast(
+        error instanceof SyntaxError
+          ? 'صيغة JSON غير صحيحة؛ راجع الفواصل وعلامات الاقتباس.'
+          : error.message,
+        'error',
+      );
+      input.focus();
+      return;
+    }
+    invalidateMessage();
+    e.approval = null;
+    model.awaitingEdit = false;
+    model.reviewSignature = null;
+    model.messageSignature = JSON.stringify(request);
+    model.awaitingMessage = true;
+    action('message-preview', { messageRequest: request });
+  };
+  $('#sendBotMessage').onclick = () => {
+    const p = e.messageApproval;
+    if (!p || model.state.demo) return;
+    showDialog(
+      `<div class="dialog-symbol">${icon('log')}</div><h2>تأكيد إرسال الرسالة</h2><p>السيرفر: <strong translate="no">${esc(guildName())}</strong><br>الغرفة: <strong>${esc(p.channelName)}</strong></p><div class="message-confirm-preview">${messageDesign(p)}</div><p>ستظهر باسم البوت. الإشارات التلقائية معطّلة.</p><div class="dialog-actions"><button class="btn btn-ghost" value="cancel">إلغاء</button><button class="btn btn-primary" type="button" id="confirmBotMessage">تأكيد الإرسال</button></div>`,
+    );
+    $('#confirmBotMessage').onclick = () => {
+      $('#confirmDialog').close();
+      e.messageApproval = null;
+      action('message-send', {
+        messageConfirmation: {
+          confirmed: true,
+          guildId: guildId(),
+          channelId: p.channelId,
+          approvalHash: p.approvalHash,
+        },
+      });
+    };
+  };
 }
 
-function channelGeneral(e,readOnly){const type=Number(e.values.type),disabled=readOnly||busy();return `<div class="form-grid">${field('اسم '+(type===4?'القسم':'القناة'),'editName',e.values.name,'text','full',disabled,'اختر اسمًا واضحًا. يمكنك تخصيص الإيموجي من زر مكتبة الإيموجي.')} ${type!==4?`<div class="field full"><label for="editParent">القسم الرئيسي</label><select id="editParent" ${disabled?'disabled':''}><option value="">بدون قسم</option>${inventory().channels.filter(c=>c.type===4).map(c=>`<option value="${esc(c.id)}" ${c.id===e.values.parent_id?'selected':''}>${esc(c.name)}</option>`).join('')}</select><span class="field-help">نقل القناة يحافظ على أذوناتها الحالية.</span></div>`:''}${type===0?`<div class="field full"><label for="editTopic">وصف القناة <small>اختياري</small></label><textarea id="editTopic" maxlength="1024" ${disabled?'disabled':''} placeholder="ماذا يحدث في هذه المساحة؟">${esc(e.values.topic)}</textarea></div>${field('تهدئة الرسائل (ثانية)','editSlowmode',e.values.rate_limit_per_user,'number','',disabled,'0 لتعطيل وضع التهدئة. الحد الأقصى 21600.')}`:''}${type===2?field('الحد الأقصى للأعضاء','editUserLimit',e.values.user_limit,'number','',disabled,'0 يسمح بعدد غير محدود. الحد الأقصى 99.'):''}</div><div class="notice" style="margin-top:23px;margin-bottom:0">${icon('shield')}<div><strong>التعديل يبدأ بمعاينة</strong>لن يتغير أي شيء في السيرفر حتى تراجع التفاصيل وتؤكد الحفظ.</div></div>`;}
-function channelPermissions(e,readOnly){const roles=inventory().roles.filter(r=>!r.managed&&!/OWNER/.test(r.name)&&(!r.readOnlyReason||r.name==='@everyone'));if(!model.overwriteRole||!roles.some(r=>r.id===model.overwriteRole))model.overwriteRole=roles[0]?.id??'';const chosen=roles.find(r=>r.id===model.overwriteRole);const existing=e.item?.overwrites?.find(w=>w.type===0&&w.id===chosen?.id);return `<div class="notice">${icon('key')}<div>حدّد رتبة واضبط وصولها لهذه القناة. أذونات الأعضاء والقيادة والتكاملات تبقى محفوظة.</div></div><div class="field permission-role-select"><label for="overwriteRole">الرتبة المراد ضبط وصولها</label><select id="overwriteRole" ${busy()?'disabled':''}>${roles.map(r=>`<option value="${esc(r.id)}" ${r.id===model.overwriteRole?'selected':''}>${esc(r.name)}</option>`).join('')}</select></div>${!roles.length?'<div class="no-result">لا توجد رتب متاحة للتحرير.</div>':`<div class="overwrite-permissions">${inventory().channelPermissionNames.map(name=>{const value=e.overwriteChanges[chosen.id]?.[name]??existing?.flags.find(f=>f.name===name)?.state??'inherit';return `<label class="overwrite-row"><span>${esc(permissionLabel(name))}</span><select data-overwrite="${esc(name)}" ${readOnly||busy()?'disabled':''} aria-label="${esc(permissionLabel(name))}"><option value="inherit" ${value==='inherit'?'selected':''}>وراثة</option><option value="allow" ${value==='allow'?'selected':''}>سماح ✓</option><option value="deny" ${value==='deny'?'selected':''}>منع ×</option></select></label>`;}).join('')}</div>`}`;}
-function bindInspector(){const e=model.editor;if(!e)return;const grant=$('#grantRole');if(grant)grant.onclick=()=>openRoleGrant(e);bindMessageComposer(e);const accessRefresh=$('#reloadRoleAccess');if(accessRefresh)accessRefresh.onclick=()=>action('inventory');const reload=$('#reloadEditor');if(reload)reload.onclick=()=>action('inventory');$$('[data-editor-tab]').forEach(b=>b.onclick=()=>{model.tab=b.dataset.editorTab;render();});const binds={editName:'name',editTopic:'topic',editParent:'parent_id',editSlowmode:'rate_limit_per_user',editUserLimit:'user_limit'};for(const [id,prop]of Object.entries(binds)){const input=$('#'+id);if(input)input.oninput=()=>{e.values[prop]=input.value;invalidate();};}
-  const emojiButton=$('#openNameEmojis');if(emojiButton)emojiButton.onclick=()=>showNameEmojiPicker(e);
-  const selector=$('#overwriteRole');if(selector)selector.onchange=()=>{model.overwriteRole=selector.value;render();};$$('[data-overwrite]').forEach(input=>input.onchange=()=>{e.overwriteChanges[model.overwriteRole]??={};e.overwriteChanges[model.overwriteRole][input.dataset.overwrite]=input.value;invalidate();});
-  $('#reviewEdit').onclick=()=>{if(!validateEditor())return;if(!e.values.name.trim()){toast('أدخل اسم العنصر أولًا.');$('#editName')?.focus();return;}model.reviewSignature=JSON.stringify(editorRequest());model.awaitingEdit=true;action('edit-preview',{editRequest:editorRequest()});};$('#applyEdit').onclick=showApplyDialog;if(e.kind==='role')bindLiveRole(e);bindWorkspaceEditor(e);
+function field(label, id, value, type = 'text', extra = '', disabled = false, help = '') {
+  return `<div class="field ${extra}"><label for="${id}">${label}</label><input type="${type}" id="${id}" value="${esc(value)}" ${disabled ? 'disabled' : ''}>${id === 'editName' ? emojiPalette(disabled) : ''}${help ? `<span class="field-help">${help}</span>` : ''}</div>`;
 }
-function createEntity(kind,type=0){setEditor(kind,null,'create',type);model.page=kind==='role'?'roles':'channels';render();setTimeout(()=>$('#editName')?.focus(),0);}
-function showCreateChannel(){showDialog(`<div class="dialog-symbol">${icon('plus')}</div><h2>أضف مساحة لمجتمعك</h2><p>اختر نوع المساحة. ستراجع إعداداتها قبل إنشائها في السيرفر.</p><div class="field"><label for="newChannelType">نوع المساحة</label><select id="newChannelType"><option value="0">💬 قناة نصية</option><option value="2">🎙️ قناة صوتية</option><option value="4">📁 قسم للقنوات</option></select></div><div class="dialog-actions"><button class="btn btn-ghost" value="cancel">إلغاء</button><button class="btn btn-primary" type="button" id="createChosen">متابعة ${icon('arrow')}</button></div>`);$('#createChosen').onclick=()=>{const type=Number($('#newChannelType').value);$('#confirmDialog').close();createEntity('channel',type);};}
-function openRoleGrant(e){if(!e.item||e.item.readOnlyReason||busy())return;model.grantDraft={guildId:guildId(),roleId:e.item.id,roleName:e.item.name,memberId:'',pending:false,plan:null};renderRoleGrantDialog();}
-function renderRoleGrantDialog(error=''){
-  const d=model.grantDraft;if(!d)return;const p=d.plan;
-  showDialog(`<div class="dialog-symbol">${icon('users')}</div><h2>منح الرتبة لعضو</h2><p>السيرفر: <strong translate="no">${esc(guildName())}</strong><br>الرتبة: <strong translate="no">${esc(d.roleName)}</strong></p><p>سيتم منح الرتبة بصلاحياتها الحالية المحفوظة في Discord.</p><div class="field"><label for="grantMemberId">معرّف العضو · User ID</label><input id="grantMemberId" class="ltr" inputmode="numeric" maxlength="22" autocomplete="off" placeholder="أدخل معرّف العضو من Discord" value="${esc(d.memberId)}" ${d.pending?'disabled':''}><span class="field-help">فعّل وضع المطوّر في Discord، ثم اضغط على العضو واختر نسخ معرّف المستخدم.</span></div>${model.state.demo?'<p class="field-help">للتجربة استخدم العضو الوهمي: <code>900000000000001005</code>. المنح الحقيقي معطّل.</p>':''}${error?`<div class="notice yellow" role="alert"><div>${esc(error)}</div></div>`:''}${p?`<div class="grant-reviewed"><span>العضو المستهدف</span><strong translate="no">${esc(p.memberName)}</strong><code>${esc(p.memberId)}</code><p>تُضاف هذه الرتبة فقط. تبقى رتب العضو الحالية محفوظة.</p></div>${p.administrator?`<div class="notice yellow"><div><strong>هذه الرتبة تمنح Administrator</strong>سيحصل العضو على صلاحيات إدارة كاملة في السيرفر.</div></div><label class="grant-admin-ack"><input type="checkbox" id="grantAdminAck">أوافق على منح صلاحية Administrator لهذا العضو المحدد.</label>`:''}`:''}<div class="dialog-actions"><button class="btn btn-ghost" value="cancel">إلغاء</button><button class="btn btn-ghost" type="button" id="previewRoleGrant" ${d.pending?'disabled':''}>${icon('eye')} ${d.pending?'جارٍ التحقق من العضو…':'معاينة منح الرتبة'}</button><button class="btn btn-primary" type="button" id="confirmRoleGrant" ${!p||d.pending||p.administrator||model.state.demo?'disabled':''}>${icon('check')} تأكيد منح الرتبة</button></div>`);
-  const input=$('#grantMemberId');input.oninput=()=>{d.memberId=input.value.replace(/\D/g,'');input.value=d.memberId;d.plan=null;$('#confirmRoleGrant').disabled=true;$('.grant-reviewed')?.remove();$('#grantAdminAck')?.closest('label')?.remove();};
-  input.onkeydown=event=>{if(event.key==='Enter'){event.preventDefault();$('#previewRoleGrant').click();}};
-  $('#previewRoleGrant').onclick=()=>{if(busy()||d.pending)return;if(!/^\d{16,22}$/.test(d.memberId)){toast('أدخل معرّف عضو صحيحًا من السيرفر.','error');input.focus();return;}d.plan=null;d.pending=true;renderRoleGrantDialog();action('role-grant-preview',{roleGrantRequest:{roleId:d.roleId,memberId:d.memberId}});};
-  const ack=$('#grantAdminAck');if(ack)ack.onchange=()=>{$('#confirmRoleGrant').disabled=!ack.checked||model.state.demo;};
-  $('#confirmRoleGrant').onclick=()=>{const plan=d.plan;if(!plan||busy()||model.state.demo||plan.administrator&&!ack?.checked)return;const confirmation={confirmed:true,guildId:plan.guildId,roleId:plan.roleId,memberId:plan.memberId,approvalHash:plan.approvalHash,acknowledgeAdmin:ack?.checked===true};d.plan=null;$('#confirmDialog').close();action('role-grant-apply',{roleGrantConfirmation:confirmation});};
+function emojiPalette(disabled) {
+  return `<div class="name-emoji-tools"><button class="btn btn-ghost" type="button" id="openNameEmojis" ${disabled ? 'disabled' : ''}>${icon('spark')} مكتبة الإيموجي ${icon('plus')}</button><span>اختر من المكتبة أو أضف إيموجي من عندك</span></div>`;
+}
+const nameEmojiGroups = [
+  {
+    id: 'gaming',
+    name: 'الألعاب',
+    items: [
+      ['🎮', 'ألعاب gaming controller'],
+      ['🕹️', 'تحكم joystick'],
+      ['🎯', 'هدف target'],
+      ['⚔️', 'قتال swords'],
+      ['🏆', 'بطولة trophy'],
+      ['🥇', 'فوز medal'],
+      ['🚀', 'صاروخ rocket'],
+      ['🏎️', 'سباق racing'],
+      ['🎲', 'نرد dice'],
+      ['♟️', 'شطرنج chess'],
+      ['🧩', 'ألغاز puzzle'],
+      ['🔥', 'نار fire'],
+    ],
+  },
+  {
+    id: 'community',
+    name: 'المجتمع',
+    items: [
+      ['💬', 'دردشة chat'],
+      ['👋', 'ترحيب welcome'],
+      ['🤝', 'تعارف handshake'],
+      ['🎉', 'احتفال party'],
+      ['🎙️', 'ميكروفون microphone'],
+      ['🎧', 'سماعة headphones'],
+      ['🔊', 'صوت speaker'],
+      ['☕', 'استراحة coffee'],
+      ['🌙', 'ليل moon'],
+      ['🌿', 'هدوء leaf'],
+      ['💡', 'اقتراح idea'],
+      ['📸', 'صور camera'],
+    ],
+  },
+  {
+    id: 'staff',
+    name: 'الإدارة',
+    items: [
+      ['🛡️', 'حماية shield'],
+      ['👑', 'تاج crown'],
+      ['💎', 'مميز diamond'],
+      ['📜', 'قوانين rules'],
+      ['📢', 'إعلان announcement'],
+      ['📋', 'مهام clipboard'],
+      ['📌', 'مثبت pin'],
+      ['🎫', 'دعم ticket'],
+      ['🔒', 'خاص lock'],
+      ['🔑', 'مفتاح key'],
+      ['⚙️', 'إعدادات settings'],
+      ['📊', 'إحصائيات stats'],
+    ],
+  },
+  {
+    id: 'style',
+    name: 'لمسات مميزة',
+    items: [
+      ['✨', 'لمعة sparkles'],
+      ['🌟', 'نجم star'],
+      ['⚡', 'برق lightning'],
+      ['💫', 'تألق glow'],
+      ['🔮', 'سحر crystal'],
+      ['🪐', 'كوكب planet'],
+      ['🌌', 'فضاء galaxy'],
+      ['🦋', 'فراشة butterfly'],
+      ['🎨', 'تصميم art'],
+      ['💜', 'قلب heart'],
+      ['🌊', 'موج wave'],
+      ['🪷', 'لوتس lotus'],
+    ],
+  },
+];
+function validNameEmoji(value) {
+  if (!value || value.length > 32 || value !== value.trim()) return false;
+  const parts = [...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(value)];
+  return (
+    parts.length === 1 &&
+    /\p{Extended_Pictographic}|\p{Regional_Indicator}|\u20e3/u.test(value) &&
+    !/[<>\r\n]/.test(value)
+  );
+}
+function nameWithEmoji(name, emoji) {
+  const first = [...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(name)][0]
+    ?.segment;
+  if (first && validNameEmoji(first))
+    name = name.slice(first.length).replace(/^[\s・·|｜•:—-]+/u, '');
+  return emoji + '・' + name;
+}
+function showNameEmojiPicker(e) {
+  const nameInput = $('#editName');
+  if (!nameInput || nameInput.disabled || busy() || model.editor !== e) return;
+  let group = 'all',
+    selected = '',
+    own = false;
+  const original = nameInput.value;
+  showDialog(
+    `<div class="emoji-picker-heading"><div class="dialog-symbol">${icon('spark')}</div><div><h2>لمسة تعبّر عن مجتمعك</h2><p>مكتبة إيموجي لأسماء الغرف والأقسام والرتب</p></div></div><div class="emoji-picker-search">${icon('search')}<input type="search" id="nameEmojiSearch" aria-label="البحث في مكتبة الإيموجي" placeholder="ابحث بالعربي أو English…"></div><div class="emoji-categories" role="group" aria-label="تصنيفات الإيموجي"><button type="button" data-emoji-group="all" class="active">الكل</button>${nameEmojiGroups.map((g) => `<button type="button" data-emoji-group="${g.id}">${g.name}</button>`).join('')}<button type="button" data-emoji-group="mine">إضافاتي</button></div><div class="name-emoji-grid" id="nameEmojiGrid" role="group" aria-label="اختيار إيموجي"></div><div class="own-emoji-field"><label for="ownNameEmoji">إيموجي من عندك</label><div><input type="text" id="ownNameEmoji" maxlength="32" placeholder="الصق إيموجي هنا مثل 🐉" autocomplete="off"><button class="btn btn-ghost" type="button" id="chooseOwnEmoji">اختيار</button></div><small id="ownEmojiHelp">للأسماء استخدم إيموجي Unicode. صور وإيموجيات Discord المخصصة لا تظهر كصور داخل اسم القناة؛ يمكن استخدامها في الرسائل.</small></div><div class="emoji-name-preview"><span>معاينة الاسم</span><strong dir="auto" id="emojiNamePreview">${esc(original)}</strong></div><div class="dialog-actions"><button class="btn btn-ghost" value="cancel">إلغاء</button><button class="btn btn-primary" type="button" id="useNameEmoji" disabled>استخدام الإيموجي ${icon('check')}</button></div>`,
+  );
+  const draw = () => {
+    const query = $('#nameEmojiSearch').value.trim().toLowerCase();
+    const list =
+      group === 'mine'
+        ? (model.customNameEmojis ?? []).map((x) => [x, 'إيموجي مضاف'])
+        : nameEmojiGroups.filter((g) => group === 'all' || g.id === group).flatMap((g) => g.items);
+    const filtered = list.filter(
+      ([emoji, words]) => !query || (emoji + ' ' + words).toLowerCase().includes(query),
+    );
+    $('#nameEmojiGrid').innerHTML = filtered.length
+      ? filtered
+          .map(
+            ([emoji, words]) =>
+              `<button type="button" class="emoji-choice emoji ${emoji === selected ? 'selected' : ''}" data-name-emoji="${esc(emoji)}" aria-label="${esc(words.split(' ')[0] + ' ' + emoji)}" title="${esc(words)}" aria-pressed="${emoji === selected}">${esc(emoji)}</button>`,
+          )
+          .join('')
+      : `<p class="emoji-empty">${group === 'mine' ? 'الإيموجيات التي تضيفها تظهر هنا طوال الجلسة.' : 'لا توجد نتائج. جرّب كلمة أخرى أو الصق إيموجي من عندك.'}</p>`;
+    $$('[data-name-emoji]').forEach(
+      (b) =>
+        (b.onclick = () => {
+          selected = b.dataset.nameEmoji;
+          own = false;
+          $('#ownNameEmoji').value = '';
+          updateSelection();
+          draw();
+        }),
+    );
+  };
+  const updateSelection = () => {
+    $('#emojiNamePreview').textContent = selected ? nameWithEmoji(original, selected) : original;
+    $('#useNameEmoji').disabled = !selected;
+  };
+  $$('[data-emoji-group]').forEach(
+    (b) =>
+      (b.onclick = () => {
+        group = b.dataset.emojiGroup;
+        $$('[data-emoji-group]').forEach((x) => x.classList.toggle('active', x === b));
+        draw();
+      }),
+  );
+  $('#nameEmojiSearch').oninput = draw;
+  $('#nameEmojiSearch').onkeydown = (event) => {
+    if (event.key === 'Enter') event.preventDefault();
+  };
+  const chooseOwn = () => {
+    const value = $('#ownNameEmoji').value.trim();
+    if (!validNameEmoji(value)) {
+      $('#ownEmojiHelp').textContent =
+        'الصق إيموجي واحدًا؛ الصور وأكواد مثل <:name:id> غير مدعومة في الأسماء.';
+      $('#ownNameEmoji').setAttribute('aria-invalid', 'true');
+      return;
+    }
+    $('#ownNameEmoji').removeAttribute('aria-invalid');
+    $('#ownEmojiHelp').textContent = 'جاهز للاستخدام. سيظهر ضمن «إضافاتي» طوال هذه الجلسة.';
+    selected = value;
+    own = true;
+    updateSelection();
+    draw();
+  };
+  $('#chooseOwnEmoji').onclick = chooseOwn;
+  $('#ownNameEmoji').oninput = () => {
+    selected = '';
+    own = false;
+    updateSelection();
+    draw();
+  };
+  $('#ownNameEmoji').onkeydown = (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      chooseOwn();
+    }
+  };
+  $('#useNameEmoji').onclick = () => {
+    if (!selected || busy() || model.editor !== e || $('#editName')?.disabled) return;
+    const next = nameWithEmoji(original, selected);
+    if (next.length > 100) {
+      toast('الاسم مع الإيموجي يتجاوز 100 حرف. اختصر الاسم أولًا.', 'error');
+      return;
+    }
+    if (own)
+      model.customNameEmojis = [
+        selected,
+        ...(model.customNameEmojis ?? []).filter((x) => x !== selected),
+      ].slice(0, 30);
+    e.values.name = next;
+    $('#editName').value = next;
+    $('#editName').dispatchEvent(new Event('input', { bubbles: true }));
+    invalidate();
+    $('#confirmDialog').close();
+    $('#editName').focus();
+  };
+  draw();
+  $('#nameEmojiSearch').focus();
 }
 
-function showApplyDialog(){const approval=model.editor?.approval;if(!approval||model.state.demo)return;showDialog(`<div class="dialog-symbol">${icon('check')}</div><h2>تأكيد حفظ التعديل</h2><p>سيُحفظ هذا التغيير في <strong translate="no">${esc(guildName())}</strong>. راجع التفاصيل قبل المتابعة.</p><div class="review-summary">${esc(approval.summary)}</div><div class="dialog-actions"><button class="btn btn-ghost" value="cancel">العودة للمراجعة</button><button class="btn btn-primary" type="button" id="confirmApply">${icon('check')} تأكيد وحفظ</button></div>`);$('#confirmApply').onclick=()=>{$('#confirmDialog').close();const confirmation={confirmed:true,guildId:guildId(),approvalHash:approval.approvalHash};model.editor.approval=null;action('edit-apply',{editConfirmation:confirmation});};}
-function fitDialogLayout(){
- const dialog=$('#confirmDialog'),content=$('#dialogContent'),actions=content.querySelector(':scope > .dialog-actions');dialog.classList.toggle('managed-dialog',!!actions);if(!actions)return;
- const body=document.createElement('div');body.className='managed-dialog-body';for(const node of [...content.childNodes])if(node!==actions)body.append(node);content.prepend(body);
+function channelGeneral(e, readOnly) {
+  const type = Number(e.values.type),
+    disabled = readOnly || busy();
+  return `<div class="form-grid">${field('اسم ' + (type === 4 ? 'القسم' : 'القناة'), 'editName', e.values.name, 'text', 'full', disabled, 'اختر اسمًا واضحًا. يمكنك تخصيص الإيموجي من زر مكتبة الإيموجي.')} ${
+    type !== 4
+      ? `<div class="field full"><label for="editParent">القسم الرئيسي</label><select id="editParent" ${disabled ? 'disabled' : ''}><option value="">بدون قسم</option>${inventory()
+          .channels.filter((c) => c.type === 4)
+          .map(
+            (c) =>
+              `<option value="${esc(c.id)}" ${c.id === e.values.parent_id ? 'selected' : ''}>${esc(c.name)}</option>`,
+          )
+          .join(
+            '',
+          )}</select><span class="field-help">نقل القناة يحافظ على أذوناتها الحالية.</span></div>`
+      : ''
+  }${type === 0 ? `<div class="field full"><label for="editTopic">وصف القناة <small>اختياري</small></label><textarea id="editTopic" maxlength="1024" ${disabled ? 'disabled' : ''} placeholder="ماذا يحدث في هذه المساحة؟">${esc(e.values.topic)}</textarea></div>${field('تهدئة الرسائل (ثانية)', 'editSlowmode', e.values.rate_limit_per_user, 'number', '', disabled, '0 لتعطيل وضع التهدئة. الحد الأقصى 21600.')}` : ''}${type === 2 ? field('الحد الأقصى للأعضاء', 'editUserLimit', e.values.user_limit, 'number', '', disabled, '0 يسمح بعدد غير محدود. الحد الأقصى 99.') : ''}</div><div class="notice" style="margin-top:23px;margin-bottom:0">${icon('shield')}<div><strong>التعديل يبدأ بمعاينة</strong>لن يتغير أي شيء في السيرفر حتى تراجع التفاصيل وتؤكد الحفظ.</div></div>`;
 }
-function showDialog(content){const dialog=$('#confirmDialog');$('#dialogContent').innerHTML=content;fitDialogLayout();if(dialog.open)dialog.close();dialog.showModal();}
+function channelPermissions(e, readOnly) {
+  const roles = inventory().roles.filter(
+    (r) => !r.managed && (!r.readOnlyReason || r.name === '@everyone'),
+  );
+  if (!model.overwriteRole || !roles.some((r) => r.id === model.overwriteRole))
+    model.overwriteRole = roles[0]?.id ?? '';
+  const chosen = roles.find((r) => r.id === model.overwriteRole);
+  const existing = e.item?.overwrites?.find((w) => w.type === 0 && w.id === chosen?.id);
+  return `<div class="notice">${icon('key')}<div>حدّد رتبة واضبط وصولها لهذه القناة. أذونات الأعضاء والرتب غير المحددة تبقى محفوظة.</div></div><div class="field permission-role-select"><label for="overwriteRole">الرتبة المراد ضبط وصولها</label><select id="overwriteRole" ${busy() ? 'disabled' : ''}>${roles.map((r) => `<option value="${esc(r.id)}" ${r.id === model.overwriteRole ? 'selected' : ''}>${esc(r.name)}</option>`).join('')}</select></div>${
+    !roles.length
+      ? '<div class="no-result">لا توجد رتب متاحة للتحرير.</div>'
+      : `<div class="overwrite-permissions">${inventory()
+          .channelPermissionNames.map((name) => {
+            const value =
+              e.overwriteChanges[chosen.id]?.[name] ??
+              existing?.flags.find((f) => f.name === name)?.state ??
+              'inherit';
+            return `<label class="overwrite-row"><span>${esc(permissionLabel(name))}</span><select data-overwrite="${esc(name)}" ${readOnly || busy() ? 'disabled' : ''} aria-label="${esc(permissionLabel(name))}"><option value="inherit" ${value === 'inherit' ? 'selected' : ''}>وراثة</option><option value="allow" ${value === 'allow' ? 'selected' : ''}>سماح ✓</option><option value="deny" ${value === 'deny' ? 'selected' : ''}>منع ×</option></select></label>`;
+          })
+          .join('')}</div>`
+  }`;
+}
+function bindInspector() {
+  const e = model.editor;
+  if (!e) return;
+  const grant = $('#grantRole');
+  if (grant) grant.onclick = () => openRoleGrant(e);
+  bindMessageComposer(e);
+  const accessRefresh = $('#reloadRoleAccess');
+  if (accessRefresh) accessRefresh.onclick = () => action('inventory');
+  const reload = $('#reloadEditor');
+  if (reload) reload.onclick = () => action('inventory');
+  $$('[data-editor-tab]').forEach(
+    (b) =>
+      (b.onclick = () => {
+        model.tab = b.dataset.editorTab;
+        render();
+      }),
+  );
+  const binds = {
+    editName: 'name',
+    editTopic: 'topic',
+    editParent: 'parent_id',
+    editSlowmode: 'rate_limit_per_user',
+    editUserLimit: 'user_limit',
+  };
+  for (const [id, prop] of Object.entries(binds)) {
+    const input = $('#' + id);
+    if (input)
+      input.oninput = () => {
+        e.values[prop] = input.value;
+        invalidate();
+      };
+  }
+  const emojiButton = $('#openNameEmojis');
+  if (emojiButton) emojiButton.onclick = () => showNameEmojiPicker(e);
+  const selector = $('#overwriteRole');
+  if (selector)
+    selector.onchange = () => {
+      model.overwriteRole = selector.value;
+      render();
+    };
+  $$('[data-overwrite]').forEach(
+    (input) =>
+      (input.onchange = () => {
+        e.overwriteChanges[model.overwriteRole] ??= {};
+        e.overwriteChanges[model.overwriteRole][input.dataset.overwrite] = input.value;
+        invalidate();
+      }),
+  );
+  $('#reviewEdit').onclick = () => {
+    if (!validateEditor()) return;
+    if (!e.values.name.trim()) {
+      toast('أدخل اسم العنصر أولًا.');
+      $('#editName')?.focus();
+      return;
+    }
+    model.reviewSignature = JSON.stringify(editorRequest());
+    model.awaitingEdit = true;
+    action('edit-preview', { editRequest: editorRequest() });
+  };
+  $('#applyEdit').onclick = showApplyDialog;
+  if (e.kind === 'role') bindLiveRole(e);
+  bindWorkspaceEditor(e);
+}
+function createEntity(kind, type = 0) {
+  setEditor(kind, null, 'create', type);
+  model.page = kind === 'role' ? 'roles' : 'channels';
+  render();
+  setTimeout(() => $('#editName')?.focus(), 0);
+}
+function showCreateChannel() {
+  showDialog(
+    `<div class="dialog-symbol">${icon('plus')}</div><h2>أضف مساحة لمجتمعك</h2><p>اختر نوع المساحة. ستراجع إعداداتها قبل إنشائها في السيرفر.</p><div class="field"><label for="newChannelType">نوع المساحة</label><select id="newChannelType"><option value="0">💬 قناة نصية</option><option value="2">🎙️ قناة صوتية</option><option value="4">📁 قسم للقنوات</option></select></div><div class="dialog-actions"><button class="btn btn-ghost" value="cancel">إلغاء</button><button class="btn btn-primary" type="button" id="createChosen">متابعة ${icon('arrow')}</button></div>`,
+  );
+  $('#createChosen').onclick = () => {
+    const type = Number($('#newChannelType').value);
+    $('#confirmDialog').close();
+    createEntity('channel', type);
+  };
+}
+function openRoleGrant(e) {
+  if (!e.item || e.item.readOnlyReason || busy()) return;
+  model.grantDraft = {
+    guildId: guildId(),
+    roleId: e.item.id,
+    roleName: e.item.name,
+    memberId: '',
+    pending: false,
+    plan: null,
+  };
+  renderRoleGrantDialog();
+}
+function renderRoleGrantDialog(error = '') {
+  const d = model.grantDraft;
+  if (!d) return;
+  const p = d.plan;
+  showDialog(
+    `<div class="dialog-symbol">${icon('users')}</div><h2>منح الرتبة لعضو</h2><p>السيرفر: <strong translate="no">${esc(guildName())}</strong><br>الرتبة: <strong translate="no">${esc(d.roleName)}</strong></p><p>سيتم منح الرتبة بصلاحياتها الحالية المحفوظة في Discord.</p><div class="field"><label for="grantMemberId">معرّف العضو · User ID</label><input id="grantMemberId" class="ltr" inputmode="numeric" maxlength="22" autocomplete="off" placeholder="أدخل معرّف العضو من Discord" value="${esc(d.memberId)}" ${d.pending ? 'disabled' : ''}><span class="field-help">فعّل وضع المطوّر في Discord، ثم اضغط على العضو واختر نسخ معرّف المستخدم.</span></div>${model.state.demo ? '<p class="field-help">للتجربة استخدم العضو الوهمي: <code>900000000000001005</code>. المنح الحقيقي معطّل.</p>' : ''}${error ? `<div class="notice yellow" role="alert"><div>${esc(error)}</div></div>` : ''}${p ? `<div class="grant-reviewed"><span>العضو المستهدف</span><strong translate="no">${esc(p.memberName)}</strong><code>${esc(p.memberId)}</code><p>تُضاف هذه الرتبة فقط. تبقى رتب العضو الحالية محفوظة.</p></div>${p.administrator ? `<div class="notice yellow"><div><strong>هذه الرتبة تمنح Administrator</strong>سيحصل العضو على صلاحيات إدارة كاملة في السيرفر.</div></div><label class="grant-admin-ack"><input type="checkbox" id="grantAdminAck">أوافق على منح صلاحية Administrator لهذا العضو المحدد.</label>` : ''}` : ''}<div class="dialog-actions"><button class="btn btn-ghost" value="cancel">إلغاء</button><button class="btn btn-ghost" type="button" id="previewRoleGrant" ${d.pending ? 'disabled' : ''}>${icon('eye')} ${d.pending ? 'جارٍ التحقق من العضو…' : 'معاينة منح الرتبة'}</button><button class="btn btn-primary" type="button" id="confirmRoleGrant" ${!p || d.pending || p.administrator || model.state.demo ? 'disabled' : ''}>${icon('check')} تأكيد منح الرتبة</button></div>`,
+  );
+  const input = $('#grantMemberId');
+  input.oninput = () => {
+    d.memberId = input.value.replace(/\D/g, '');
+    input.value = d.memberId;
+    d.plan = null;
+    $('#confirmRoleGrant').disabled = true;
+    $('.grant-reviewed')?.remove();
+    $('#grantAdminAck')?.closest('label')?.remove();
+  };
+  input.onkeydown = (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      $('#previewRoleGrant').click();
+    }
+  };
+  $('#previewRoleGrant').onclick = () => {
+    if (busy() || d.pending) return;
+    if (!/^\d{16,22}$/.test(d.memberId)) {
+      toast('أدخل معرّف عضو صحيحًا من السيرفر.', 'error');
+      input.focus();
+      return;
+    }
+    d.plan = null;
+    d.pending = true;
+    renderRoleGrantDialog();
+    action('role-grant-preview', { roleGrantRequest: { roleId: d.roleId, memberId: d.memberId } });
+  };
+  const ack = $('#grantAdminAck');
+  if (ack)
+    ack.onchange = () => {
+      $('#confirmRoleGrant').disabled = !ack.checked || model.state.demo;
+    };
+  $('#confirmRoleGrant').onclick = () => {
+    const plan = d.plan;
+    if (!plan || busy() || model.state.demo || (plan.administrator && !ack?.checked)) return;
+    const confirmation = {
+      confirmed: true,
+      guildId: plan.guildId,
+      roleId: plan.roleId,
+      memberId: plan.memberId,
+      approvalHash: plan.approvalHash,
+      acknowledgeAdmin: ack?.checked === true,
+    };
+    d.plan = null;
+    $('#confirmDialog').close();
+    action('role-grant-apply', { roleGrantConfirmation: confirmation });
+  };
+}
 
-function botUptimeMarkup(){return '<span class="bot-uptime"><span class="uptime-dot" aria-hidden="true"></span><span>مدة تشغيل البوت</span><time id="botUptime" translate="no" dir="ltr">'+botUptimeText()+'</time></span>';}
-function botUptimeText(){const since=model.state.presenceStartedAt;if(!since||!model.state.presenceActive)return '00:00:00';const seconds=Math.max(0,Math.floor((Date.now()-since)/1000));return [Math.floor(seconds/3600),Math.floor(seconds/60)%60,seconds%60].map(n=>String(n).padStart(2,'0')).join(':');}
-function updateBotUptime(){const clock=$('#botUptime');if(clock)clock.textContent=botUptimeText();}
-function savedServersMarkup(){
- const list=model.state.serverProfiles??[];
- return `<section class="panel saved-servers-panel" id="savedServersPanel">${panelTitle('السيرفرات المحفوظة','اختر سيرفرًا محفوظًا أو أضف رقم سيرفر جديد.','folder',button('إضافة سيرفر','addSavedServer','btn-ghost','plus',busy()))}<div class="saved-servers-body">${list.length?`<div class="server-search"><input id="savedServerSearch" type="search" placeholder="ابحث في السيرفرات المحفوظة…" value="${esc(model.serverQuery??'')}" aria-label="البحث في السيرفرات المحفوظة"></div><div class="saved-servers-grid">${list.map(item=>`<div class="saved-server-card ${item.id===guildId()?'selected':''}" data-saved-card="${esc(item.id)}"><button type="button" class="saved-server-select" data-select-server="${esc(item.id)}" ${busy()?'disabled':''}><span class="saved-server-avatar" data-server-avatar="${esc(item.id)}"></span><span class="saved-server-copy"><strong ${item.name?'translate="no"':''}>${esc(item.name||'سيرفر محفوظ')}</strong><code>${esc(item.id)}</code><small>${item.id===guildId()?'السيرفر المحدد':'اختيار السيرفر'}</small></span>${item.id===guildId()?icon('check'):icon('chevron')}</button><button class="saved-server-remove" type="button" data-remove-server="${esc(item.id)}" aria-label="إزالة من القائمة" title="إزالة من القائمة" ${busy()?'disabled':''}>${icon('trash')}</button></div>`).join('')}</div><p class="no-result hidden" id="savedServerNoResults">لا توجد نتائج مطابقة.</p>`:`<div class="saved-server-empty">${icon('folder')}<strong>سيرفراتك في مكان واحد</strong><p>أدخل رقم السيرفر أدناه واحفظه. يظهر اسمه وصورته تلقائيًا بعد أول تحميل ناجح.</p></div>`}<p class="field-help">تستخدم هذه القائمة توكن البوت الحالي. اختيار السيرفر لا يبدأ الاتصال تلقائيًا.</p>${inventory()?button('تخصيص السيرفر الحالي','openCurrentProfile','btn-ghost','settings',busy()):''}</div></section>`;
+function showApplyDialog() {
+  const approval = model.editor?.approval;
+  if (!approval || model.state.demo) return;
+  showDialog(
+    `<div class="dialog-symbol">${icon('check')}</div><h2>تأكيد حفظ التعديل</h2><p>سيُحفظ هذا التغيير في <strong translate="no">${esc(guildName())}</strong>. راجع التفاصيل قبل المتابعة.</p><div class="review-summary">${esc(approval.summary)}</div><div class="dialog-actions"><button class="btn btn-ghost" value="cancel">العودة للمراجعة</button><button class="btn btn-primary" type="button" id="confirmApply">${icon('check')} تأكيد وحفظ</button></div>`,
+  );
+  $('#confirmApply').onclick = () => {
+    $('#confirmDialog').close();
+    const confirmation = {
+      confirmed: true,
+      guildId: guildId(),
+      approvalHash: approval.approvalHash,
+    };
+    model.editor.approval = null;
+    action('edit-apply', { editConfirmation: confirmation });
+  };
 }
-function bindSavedServers(){
- const list=model.state.serverProfiles??[];
- $$('[data-server-avatar]').forEach(node=>paintGuildAvatar(node,list.find(s=>s.id===node.dataset.serverAvatar)));
- $('#addSavedServer').onclick=()=>{$('#guildId').focus();$('#guildId').select();};
- const profile=$('#openCurrentProfile');if(profile)profile.onclick=()=>go('profile');
- const search=$('#savedServerSearch');if(search){const filter=()=>{model.serverQuery=search.value;const q=search.value.trim().toLocaleLowerCase();let count=0;$$('[data-saved-card]').forEach(card=>{const item=list.find(s=>s.id===card.dataset.savedCard),show=!q||(item.name+' '+item.id).toLocaleLowerCase().includes(q);card.hidden=!show;if(show)count++;});$('#savedServerNoResults').classList.toggle('hidden',count>0);};search.oninput=filter;filter();}
- $$('[data-select-server]').forEach(button=>button.onclick=()=>serverAction('server-select',button.dataset.selectServer));
- $$('[data-remove-server]').forEach(button=>button.onclick=()=>{
-   const item=list.find(s=>s.id===button.dataset.removeServer);
-   showDialog(`<div class="dialog-symbol">${icon('folder')}</div><h2>إزالة من القائمة</h2><p><strong translate="no">${esc(item.name||item.id)}</strong></p><p>ستُحذف هذه البطاقة من الجهاز فقط. يبقى السيرفر وبياناته على Discord كما هي.</p><div class="dialog-actions"><button class="btn btn-ghost" value="cancel">إلغاء</button><button class="btn btn-danger" id="confirmRemoveServer" type="button">إزالة من القائمة</button></div>`);
-   $('#confirmRemoveServer').onclick=()=>{$('#confirmDialog').close();serverAction('server-remove',item.id);};
- });
+function fitDialogLayout() {
+  const dialog = $('#confirmDialog'),
+    content = $('#dialogContent'),
+    actions = content.querySelector(':scope > .dialog-actions');
+  dialog.classList.toggle('managed-dialog', !!actions);
+  if (!actions) return;
+  const body = document.createElement('div');
+  body.className = 'managed-dialog-body';
+  for (const node of [...content.childNodes]) if (node !== actions) body.append(node);
+  content.prepend(body);
 }
-async function serverAction(name,id){
- if(busy())return;
- if(!/^\d{16,22}$/.test(id??'')){toast('أدخل رقم السيرفر الصحيح أولًا.','error');$('#guildId')?.focus();return;}
- model.requestEpoch=(model.requestEpoch??0)+1;model.postInFlight=true;model.pending=true;render();
- try{
-   await api('/api/action',{action:name,config:{guildId:id}});
-   if(name==='server-select'||name==='server-save'){
-     captureView();rememberEditor();model.config.guildId=id;model.editor=null;model.credentialsDirty=!!model.config.token;model.moveDraft=null;model.grantDraft=null;model.awaitingEdit=false;model.awaitingMessage=false;model.reviewSignature=null;model.messageSignature=null;model.rebuildRead=false;
-   }
-   model.postInFlight=false;model.pending=false;await pollState(true);
-   toast(name==='server-save'?'تم حفظ السيرفر في القائمة.':name==='server-remove'?'تمت إزالة البطاقة من الجهاز.':'تم اختيار السيرفر. اضغط اتصال لتحميل بياناته.','success');
- }catch(error){model.postInFlight=false;model.pending=false;toast(error.message,'error');render();}
+function showDialog(content) {
+  const dialog = $('#confirmDialog');
+  $('#dialogContent').innerHTML = content;
+  fitDialogLayout();
+  if (dialog.open) dialog.close();
+  dialog.showModal();
 }
-function markSavedDraftDirty(){model.savedDraftDirty=true;const status=$('.credential-status');if(status)status.textContent='التعديلات الحالية غير محفوظة';}
-function renderSettings(){const state=model.state;$('#main').innerHTML=savedServersMarkup()+`<section class="panel settings-panel"><div class="settings-heading"><div class="entity-symbol">${icon('link')}</div><div><h2>إعداد الاتصال بالسيرفر</h2><p>احفظ بيانات الاتصال على جهازك بتشفير حساب ويندوز، أو استخدمها لهذه الجلسة فقط.</p></div></div><div class="settings-body">${state.demo?`<div class="notice yellow">${icon('info')}<div><strong>هذه معاينة توضيحية للواجهة</strong>لا يوجد اتصال بديسكورد، ولا تُنفّذ عمليات على أي سيرفر.</div></div>`:''}<div class="field"><label for="botToken">توكن البوت <small>Bot Token</small></label><div class="input-with-action"><input id="botToken" class="ltr" type="password" autocomplete="off" spellcheck="false" placeholder="${state.credentialsSaved?'التوكن محفوظ بتشفير ويندوز؛ اتركه فارغًا لاستخدامه':state.hasCredentials?'التوكن متاح في ذاكرة الجلسة الحالية':'أدخل توكن البوت من Discord Developer Portal'}" value="${esc(model.config.token)}" ${busy()||model.state.presenceActive||online()?'disabled':''}><button id="revealToken" type="button" aria-label="إظهار أو إخفاء التوكن">${icon('eye')}</button></div><span class="field-help">لا تشارك التوكن مع أي شخص. لا يُحفظ في التخزين المحلي للمتصفح.</span></div>${field('رقم السيرفر <small>Server ID</small>','guildId',model.config.guildId,'text','',busy(),'لتغييره: انسخ رقم السيرفر من ديسكورد بعد تفعيل وضع المطوّر.')}<div class="credential-actions">${button('حفظ بيانات الاتصال','saveCredentials','btn-ghost','lock',busy()||state.demo)}${button('حذف البيانات المحفوظة','forgetCredentials','btn-ghost','close',busy()||state.demo||!state.credentialsSaved&&!state.error)}<span class="credential-status">${model.savedDraftDirty?'التعديلات الحالية غير محفوظة':state.credentialsSaved?'محفوظة على هذا الجهاز بتشفير ويندوز':'الحفظ اختياري · الاتصال يبدأ بضغطك فقط'}</span></div><div class="settings-action-row">${button(busy()?'جارٍ تحميل السيرفر…':model.state.presenceActive?'تحديث بيانات السيرفر':'اتصال وتشغيل البوت','connectCheck','btn-primary','link',busy()||model.state.demo)}${model.state.presenceActive||online()?button('إيقاف الاتصال','toggleOnline','btn-danger','stop',busy()):''}<span class="inline-status">${state.presenceStartedAt&&state.presenceActive?botUptimeMarkup():busy()?'<span class="spinner"></span> جارٍ العمل…':model.state.presenceActive?'جارٍ الاتصال بالبوت…':'تحميل السيرفر وتشغيل الحضور بخطوة واحدة'}</span></div><div class="settings-info"><div><strong>${icon('lock')} اتصال محلي</strong>بياناتك لا تمر بخادم خارجي للتطبيق.</div><div><strong>${icon('shield')} حماية ثابتة</strong>رتب القيادة والتكاملات محفوظة.</div><div><strong>${icon('eye')} مراجعة قبل التنفيذ</strong>التحميل والفحص لا يغيّران السيرفر.</div></div></div></section>`;
-  bindSavedServers();$('#guildId').insertAdjacentHTML('afterend',button('حفظ السيرفر في القائمة','saveServerProfile','btn-ghost save-server-button','plus',busy()||!state.profileStorageAvailable));$('#saveServerProfile').onclick=()=>serverAction('server-save',model.config.guildId);
-  $('#botToken').oninput=e=>{model.config.token=e.target.value.trim();markSavedDraftDirty();model.credentialsDirty=true;model.editor=null;model.state.preview=null;model.state.editPreview=null;model.rebuildRead=false;};$('#guildId').classList.add('ltr');$('#guildId').maxLength=22;$('#guildId').oninput=e=>{const value=e.target.value.replace(/\D/g,'');e.target.value=value;if(model.config.guildId!==value){model.config.guildId=value;model.editor=null;model.state.preview=null;model.state.editPreview=null;model.rebuildRead=false;}};$('#revealToken').onclick=()=>{const input=$('#botToken');input.type=input.type==='password'?'text':'password';};$('#saveCredentials').onclick=()=>action('credentials-save');$('#forgetCredentials').onclick=()=>action('credentials-forget');$('#connectCheck').onclick=()=>action('connect');const stopButton=$('#toggleOnline');if(stopButton)stopButton.onclick=()=>action('stop');
-}
-function renderPermissions(){const inv=inventory(),diag=model.state.diagnostics;$('#main').innerHTML=heading('صلاحيات البوت، أمامك بوضوح','اعرف ما يستطيع البوت إدارته، وما يحتاج تعديلًا من إعدادات السيرفر.','BOT PERMISSION CHECK',button('فحص الآن','checkPermissions','btn-primary','key',busy()));$('#checkPermissions').onclick=()=>action('check');if(!inv){$('#main').insertAdjacentHTML('beforeend',noInventory());return;}const permissions=diag?.permissions??inv.permissions;$('#main').insertAdjacentHTML('beforeend',`<div class="notice green">${icon('shield')}<div><strong>${esc(diag?.botName??'البوت')} · متصل ببيانات ${esc(guildName())}</strong>تُقرأ الصلاحيات من ديسكورد. رفع رتبة البوت أو تعديل صلاحياته يتم من إعدادات السيرفر.</div></div><section class="panel">${panelTitle('صلاحيات الوصول والإدارة',`${permissions.filter(p=>p.granted).length} صلاحية متاحة من أصل ${permissions.length}`,'key')}<div class="panel-body permission-columns">${permissions.map(p=>`<div class="permission-row"><div><span>${esc(permissionLabel(p.name))}</span><br><code>${esc(p.name)}</code></div><span class="pill ${p.granted?'':'red'}">${icon(p.granted?'check':'close')} ${p.granted?'متاحة':'غير ممنوحة'}</span></div>`).join('')}</div></section>${diag?.inaccessibleChannels?.length?`<div class="notice yellow" style="margin-top:20px">${icon('lock')}<div><strong>قنوات لا يستطيع البوت إدارتها</strong>${diag.inaccessibleChannels.map(c=>esc(c.name)).join('، ')}</div></div>`:''}`);}
 
-async function previewCustomDesign(){try{await window.CortexDesigner.flush(guildId());const design=window.CortexDesigner.current(guildId());if(!design){toast('انتظر تحميل قالب الهيكلة أولًا.');return;}model.rebuildRead=false;model.previewDesignSignature=JSON.stringify(design);action('preview',{design});}catch(error){toast(error.message,'error');}}
-function renderRedesign(){const preview=model.state.preview;$('#main').innerHTML=`<section class="panel" id="designBuilder"></section><div class="redesign-grid"><section class="panel">${panelTitle('مسار إعادة التصميم','ثلاث خطوات واضحة، وتأكيد قبل أي حذف','spark')}<div class="panel-body"><div class="workflow-step ${inventory()?'complete':''}"><span class="step-number">${inventory()?icon('check'):'01'}</span><div><h3>ابدأ من السيرفر الحالي</h3><p>حمّل القنوات والرتب وافحص صلاحيات البوت قبل إنشاء أي خطة.</p>${button('تحديث بيانات السيرفر','designCheck','btn-ghost btn-small','refresh',busy())}</div></div><div class="workflow-step ${preview?'complete':''}"><span class="step-number">${preview?icon('check'):'02'}</span><div><h3>أنشئ الخطة وراجع التفاصيل</h3><p>معاينة منفصلة تعرض الإنشاء والتحديث والحذف، مع الرتب والقنوات المحفوظة وتوزيع الأعضاء.</p>${button('إنشاء معاينة كاملة','designPreview','btn-primary btn-small','eye',busy())}</div></div><div class="workflow-step"><span class="step-number">03</span><div><h3>نفّذ بعد موافقتك الصريحة</h3><p>يُنشأ الجديد أولًا. لا يبدأ حذف القديم إلا بعد التحقق من الخطة وتأكيد رقم السيرفر وعبارة الحذف.</p>${button('مراجعة تأكيد التنفيذ','designRebuild','btn-danger btn-small','shield',busy()||!preview?.ready||model.state.demo||!model.rebuildRead)}</div></div></div></section><section class="panel">${panelTitle('تصميم احترافي. أساس آمن.','قواعد ثابتة ترافق كل خطة','shield')}<div class="panel-body"><ul class="safety-list"><li>${icon('check')}<span>★ OWNER ★ و★ CO_OWNER ★ محفوظتان بالصلاحيات والترتيب والأعضاء.</span></li><li>${icon('check')}<span>@everyone ورتب البوتات والتكاملات لا تُحذف.</span></li><li>${icon('check')}<span>قنوات Community المحمية مثل rules وmoderator-only محفوظة.</span></li><li>${icon('check')}<span>الرتب الموزعة تُحفظ عندما لا يوجد نقل آمن لتوزيعها.</span></li><li>${icon('check')}<span>لا طرد، لا حظر، ولا حذف للسيرفر.</span></li><li>${icon('check')}<span>تنفيذ تدريجي يحترم حدود Discord API ويمنع التكرار.</span></li></ul><div class="notice" style="margin-top:22px;margin-bottom:0">${icon('info')}<div>الخطة تُبنى على حالة السيرفر الحالية. أي تغيّر مؤثر يستلزم معاينة جديدة.</div></div></div></section></div>${preview?`<section class="panel report-panel">${panelTitle('تقرير الخطة المقترحة','راجع جميع التفاصيل قبل إتاحة زر التنفيذ','eye',button('تنزيل التقرير','downloadPreview','btn-ghost btn-small','log'))}<div class="report-content">${formatReport(preview.summary??preview.report??'تم إنشاء الخطة. افتح التقرير لمراجعة التفاصيل.')}</div><div class="panel-body"><div class="rebuild-approved"><label><input type="checkbox" id="reviewedPlan" ${model.rebuildRead?'checked':''}><span>راجعت تقرير الإنشاء والحذف والرتب المحفوظة، وأرغب في فتح خطوة التأكيد الإضافي.</span></label></div></div></section>`:''}`;
-  window.CortexDesigner.mount($('#designBuilder'),{guildId:guildId(),inventory:inventory(),busy:busy(),permissionLabel,onChange:()=>{model.state.preview=null;model.rebuildRead=false;model.previewDesignSignature=null;$('#designRebuild').disabled=true;$('#main > .report-panel')?.remove();},onPreview:previewCustomDesign});
-  $('#designCheck').onclick=()=>action('inventory');$('#designPreview').onclick=previewCustomDesign;$('#designRebuild').onclick=showRebuildDialog;const reviewed=$('#reviewedPlan');if(reviewed)reviewed.onchange=()=>{model.rebuildRead=reviewed.checked;$('#designRebuild').disabled=busy()||!preview?.ready||model.state.demo||!model.rebuildRead;};const download=$('#downloadPreview');if(download)download.onclick=()=>downloadText(preview.summary??'',`cortex-preview-${guildId()}.txt`);
+function botUptimeMarkup() {
+  return (
+    '<span class="bot-uptime"><span class="uptime-dot" aria-hidden="true"></span><span>مدة تشغيل البوت</span><time id="botUptime" translate="no" dir="ltr">' +
+    botUptimeText() +
+    '</time></span>'
+  );
 }
-function formatReport(text){return String(text).split(/\r?\n/).map(raw=>{const line=raw.trim();if(!line)return '';if(line.startsWith('### '))return '<h3>'+esc(line.slice(4))+'</h3>';if(line.startsWith('## '))return '<h2>'+esc(line.slice(3))+'</h2>';if(line.startsWith('# '))return '<h2>'+esc(line.slice(2))+'</h2>';const safe=esc(line.replace(/^[-*] /,'')).replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>').replace(/\b(CREATE|UPDATE|PRESERVE|DELETE|REUSE|KEEP)\b/g,(all)=>`<span class="report-action ${all==='DELETE'?'delete':['PRESERVE','KEEP'].includes(all)?'preserve':''}">${all}</span>`);return `<p>${safe}</p>`;}).join('');}
-function downloadText(text,filename){const blob=new Blob([text],{type:'text/plain;charset=utf-8'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=filename;a.click();setTimeout(()=>URL.revokeObjectURL(url),3000);}
-function showRebuildDialog(){if(!model.state.preview?.ready||model.state.demo||!model.rebuildRead)return;showDialog(`<div class="dialog-symbol danger">${icon('shield')}</div><h2>تأكيد إعادة بناء السيرفر</h2><p>ستُنشأ عناصر التصميم الجديد أولًا، ثم تُزال العناصر القديمة المسموح بحذفها حسب الخطة. قد يُفقد محتوى القنوات المحذوفة. لا تنفّذ إلا بعد مراجعة التقرير.</p><div class="notice yellow">${icon('info')}<div><strong translate="no">${esc(guildName())}</strong>رقم السيرفر: <code>${esc(guildId())}</code></div></div><div class="field"><label for="confirmGuildId">اكتب رقم السيرفر المحدد للتأكيد</label><input class="ltr" id="confirmGuildId" type="text" autocomplete="off" placeholder="رقم السيرفر" spellcheck="false"></div><div class="field"><label for="confirmDelete">اكتب العبارة التالية كما هي<br><code>DELETE_ALL_OLD_CHANNELS_AND_ROLES</code></label><input class="ltr" id="confirmDelete" type="text" autocomplete="off" spellcheck="false" placeholder="عبارة التأكيد"></div><div class="dialog-actions"><button class="btn btn-ghost" value="cancel">إلغاء</button><button class="btn btn-danger" type="button" id="confirmRebuild" disabled>${icon('shield')} تأكيد وبدء التنفيذ</button></div>`);const validate=()=>$('#confirmRebuild').disabled=$('#confirmGuildId').value!==guildId()||$('#confirmDelete').value!=='DELETE_ALL_OLD_CHANNELS_AND_ROLES';$('#confirmGuildId').oninput=validate;$('#confirmDelete').oninput=validate;$('#confirmRebuild').onclick=()=>{const config={confirmGuildId:$('#confirmGuildId').value,confirmDelete:$('#confirmDelete').value,design:window.CortexDesigner.current(guildId())};$('#confirmDialog').close();model.rebuildRead=false;action('rebuild',config);};}
+function botUptimeText() {
+  const since = model.state.presenceStartedAt;
+  if (!since || !model.state.presenceActive) return '00:00:00';
+  const seconds = Math.max(0, Math.floor((Date.now() - since) / 1000));
+  return [Math.floor(seconds / 3600), Math.floor(seconds / 60) % 60, seconds % 60]
+    .map((n) => String(n).padStart(2, '0'))
+    .join(':');
+}
+function updateBotUptime() {
+  const clock = $('#botUptime');
+  if (clock) clock.textContent = botUptimeText();
+}
+function savedServersMarkup() {
+  const list = model.state.serverProfiles ?? [];
+  return `<section class="panel saved-servers-panel" id="savedServersPanel">${panelTitle('السيرفرات المحفوظة', 'اختر سيرفرًا محفوظًا أو أضف رقم سيرفر جديد.', 'folder', button('إضافة سيرفر', 'addSavedServer', 'btn-ghost', 'plus', busy()))}<div class="saved-servers-body">${list.length ? `<div class="server-search"><input id="savedServerSearch" type="search" placeholder="ابحث في السيرفرات المحفوظة…" value="${esc(model.serverQuery ?? '')}" aria-label="البحث في السيرفرات المحفوظة"></div><div class="saved-servers-grid">${list.map((item) => `<div class="saved-server-card ${item.id === guildId() ? 'selected' : ''}" data-saved-card="${esc(item.id)}"><button type="button" class="saved-server-select" data-select-server="${esc(item.id)}" ${busy() ? 'disabled' : ''}><span class="saved-server-avatar" data-server-avatar="${esc(item.id)}"></span><span class="saved-server-copy"><strong ${item.name ? 'translate="no"' : ''}>${esc(item.name || 'سيرفر محفوظ')}</strong><code>${esc(item.id)}</code><small>${item.id === guildId() ? 'السيرفر المحدد' : 'اختيار السيرفر'}</small></span>${item.id === guildId() ? icon('check') : icon('chevron')}</button><button class="saved-server-remove" type="button" data-remove-server="${esc(item.id)}" aria-label="إزالة من القائمة" title="إزالة من القائمة" ${busy() ? 'disabled' : ''}>${icon('trash')}</button></div>`).join('')}</div><p class="no-result hidden" id="savedServerNoResults">لا توجد نتائج مطابقة.</p>` : `<div class="saved-server-empty">${icon('folder')}<strong>سيرفراتك في مكان واحد</strong><p>أدخل رقم السيرفر أدناه واحفظه. يظهر اسمه وصورته تلقائيًا بعد أول تحميل ناجح.</p></div>`}<p class="field-help">تستخدم هذه القائمة توكن البوت الحالي. اختيار السيرفر لا يبدأ الاتصال تلقائيًا.</p>${inventory() ? button('تخصيص السيرفر الحالي', 'openCurrentProfile', 'btn-ghost', 'settings', busy()) : ''}</div></section>`;
+}
+function bindSavedServers() {
+  const list = model.state.serverProfiles ?? [];
+  $$('[data-server-avatar]').forEach((node) =>
+    paintGuildAvatar(
+      node,
+      list.find((s) => s.id === node.dataset.serverAvatar),
+    ),
+  );
+  $('#addSavedServer').onclick = () => {
+    $('#guildId').focus();
+    $('#guildId').select();
+  };
+  const profile = $('#openCurrentProfile');
+  if (profile) profile.onclick = () => go('profile');
+  const search = $('#savedServerSearch');
+  if (search) {
+    const filter = () => {
+      model.serverQuery = search.value;
+      const q = search.value.trim().toLocaleLowerCase();
+      let count = 0;
+      $$('[data-saved-card]').forEach((card) => {
+        const item = list.find((s) => s.id === card.dataset.savedCard),
+          show = !q || (item.name + ' ' + item.id).toLocaleLowerCase().includes(q);
+        card.hidden = !show;
+        if (show) count++;
+      });
+      $('#savedServerNoResults').classList.toggle('hidden', count > 0);
+    };
+    search.oninput = filter;
+    filter();
+  }
+  $$('[data-select-server]').forEach(
+    (button) => (button.onclick = () => serverAction('server-select', button.dataset.selectServer)),
+  );
+  $$('[data-remove-server]').forEach(
+    (button) =>
+      (button.onclick = () => {
+        const item = list.find((s) => s.id === button.dataset.removeServer);
+        showDialog(
+          `<div class="dialog-symbol">${icon('folder')}</div><h2>إزالة من القائمة</h2><p><strong translate="no">${esc(item.name || item.id)}</strong></p><p>ستُحذف هذه البطاقة من الجهاز فقط. يبقى السيرفر وبياناته على Discord كما هي.</p><div class="dialog-actions"><button class="btn btn-ghost" value="cancel">إلغاء</button><button class="btn btn-danger" id="confirmRemoveServer" type="button">إزالة من القائمة</button></div>`,
+        );
+        $('#confirmRemoveServer').onclick = () => {
+          $('#confirmDialog').close();
+          serverAction('server-remove', item.id);
+        };
+      }),
+  );
+}
+async function serverAction(name, id) {
+  if (busy()) return;
+  if (!/^\d{16,22}$/.test(id ?? '')) {
+    toast('أدخل رقم السيرفر الصحيح أولًا.', 'error');
+    $('#guildId')?.focus();
+    return;
+  }
+  model.requestEpoch = (model.requestEpoch ?? 0) + 1;
+  model.postInFlight = true;
+  model.pending = true;
+  render();
+  try {
+    await api('/api/action', { action: name, config: { guildId: id } });
+    if (name === 'server-select' || name === 'server-save') {
+      captureView();
+      rememberEditor();
+      model.config.guildId = id;
+      model.editor = null;
+      model.credentialsDirty = !!model.config.token;
+      model.moveDraft = null;
+      model.grantDraft = null;
+      model.awaitingEdit = false;
+      model.awaitingMessage = false;
+      model.reviewSignature = null;
+      model.messageSignature = null;
+      model.rebuildRead = false;
+    }
+    model.postInFlight = false;
+    model.pending = false;
+    await pollState(true);
+    toast(
+      name === 'server-save'
+        ? 'تم حفظ السيرفر في القائمة.'
+        : name === 'server-remove'
+          ? 'تمت إزالة البطاقة من الجهاز.'
+          : 'تم اختيار السيرفر. اضغط اتصال لتحميل بياناته.',
+      'success',
+    );
+  } catch (error) {
+    model.postInFlight = false;
+    model.pending = false;
+    toast(error.message, 'error');
+    render();
+  }
+}
+function markSavedDraftDirty() {
+  model.savedDraftDirty = true;
+  const status = $('.credential-status');
+  if (status) status.textContent = 'التعديلات الحالية غير محفوظة';
+}
+function renderSettings() {
+  const state = model.state;
+  $('#main').innerHTML =
+    savedServersMarkup() +
+    `<section class="panel settings-panel connection-card"><div class="settings-heading"><div class="entity-symbol">${icon('link')}</div><div><h2>اتصال البوت</h2></div><span class="connection-private">${icon('lock')} بيانات خاصة</span></div><div class="settings-body">${state.demo ? `<div class="notice yellow">${icon('info')}<div><strong>هذه معاينة توضيحية للواجهة</strong>لا يوجد اتصال بديسكورد، ولا تُنفّذ عمليات على أي سيرفر.</div></div>` : ''}<div class="field"><label for="botToken">توكن البوت</label><div class="input-with-action"><input id="botToken" class="ltr" type="password" autocomplete="off" spellcheck="false" placeholder="${state.credentialsSaved ? 'توكن محفوظ · اتركه فارغًا' : state.hasCredentials ? 'التوكن جاهز لهذه الجلسة' : 'Bot Token'}" value="${esc(model.config.token)}" ${busy() || model.state.presenceActive || online() ? 'disabled' : ''}><button id="revealToken" type="button" aria-label="إظهار أو إخفاء التوكن">${icon('eye')}</button></div></div><div class="connection-server-field">${field('رقم السيرفر', 'guildId', model.config.guildId, 'text', '', busy())}</div><div class="connection-storage-status"><span class="credential-status" role="status">${model.savedDraftDirty ? 'التعديلات الحالية غير محفوظة' : state.credentialsSaved ? 'محفوظ بأمان على جهازك' : 'لهذه الجلسة فقط'}</span></div><div class="settings-action-row">${button(busy() ? 'جارٍ تحميل السيرفر…' : model.state.presenceActive ? 'تحديث بيانات السيرفر' : 'اتصال وتشغيل البوت', 'connectCheck', 'btn-primary', 'link', busy() || model.state.demo)}${model.state.presenceActive || online() ? button('إيقاف الاتصال', 'toggleOnline', 'btn-danger', 'stop', busy()) : ''}<span class="inline-status">${state.presenceStartedAt && state.presenceActive ? botUptimeMarkup() : busy() ? '<span class="spinner"></span> جارٍ العمل…' : model.state.presenceActive ? 'جارٍ الاتصال بالبوت…' : ''}</span></div><details class="connection-storage"><summary>${icon('lock')} خيارات حفظ الاتصال</summary><div class="credential-actions">${button('حفظ بيانات الاتصال', 'saveCredentials', 'btn-ghost', 'lock', busy() || state.demo)}${button('حذف البيانات المحفوظة', 'forgetCredentials', 'btn-ghost', 'close', busy() || state.demo || (!state.credentialsSaved && !state.error))}</div><p>التوكن يُحفظ بتشفير حساب ويندوز.</p></details></div></section>`;
 
-function officialInvite(value){try{const u=new URL(value);return u.protocol==='https:'&&u.hostname==='discord.com'&&u.pathname==='/oauth2/authorize'&&u.searchParams.get('guild_id')===guildId()?u.href:null;}catch{return null;}}
-function addInviteTools(){const diag=model.state.diagnostics;if(!inventory()||!diag)return;const normal=officialInvite(diag.inviteURL),admin=officialInvite(diag.adminInviteURL);if(!normal&&!admin)return;$('.notice.green')?.insertAdjacentHTML('afterend',`<div class="invite-tools"><span>تحتاج منح صلاحيات البوت؟</span>${normal?button('فتح دعوة الصلاحيات المطلوبة','openInvite','btn-ghost','link'):''}${admin?button('دعوة Administrator…','adminInvite','btn-ghost','shield'):''}</div>`);const normalButton=$('#openInvite');if(normalButton)normalButton.onclick=()=>window.open(normal,'_blank','noopener,noreferrer');const adminButton=$('#adminInvite');if(adminButton)adminButton.onclick=()=>{showDialog(`<div class="dialog-symbol">${icon('shield')}</div><h2>دعوة بصلاحية Administrator</h2><p>تمنح هذه الدعوة البوت صلاحية إدارة كاملة في السيرفر. استخدمها فقط إذا كنت تريد ذلك. يمكنك منح الصلاحيات المطلوبة من الدعوة العادية.</p><div class="notice"><div><strong translate="no">${esc(guildName())}</strong>سيفتح رابط ديسكورد الرسمي؛ راجع صفحة الموافقة هناك.</div></div><div class="dialog-actions"><button class="btn btn-ghost" value="cancel">إلغاء</button><button class="btn btn-primary" type="button" id="confirmAdminInvite">فتح الدعوة الرسمية ${icon('link')}</button></div>`);$('#confirmAdminInvite').onclick=()=>{$('#confirmDialog').close();window.open(admin,'_blank','noopener,noreferrer');};};}
-function showDemoDesignNote(){$('#main').insertAdjacentHTML('afterbegin',`<div class="notice yellow">${icon('eye')}<div><strong>استكشف التصميم بأمان</strong>هذه بيانات توضيحية فقط. يمكنك حفظ القالب محليًا ومعاينة التقارير؛ تغييرات Discord وإعادة البناء الفعلي معطّلة.</div></div>`);}
-function renderLogs(){$('#main').innerHTML=heading('كل خطوة لها سجل','تابع عمليات الاتصال والفحص والمراجعة والتنفيذ من مكان واحد.','ACTIVITY & OPERATION LOG',button('تنزيل السجل','downloadLogs','btn-ghost','log'))+`<section class="panel">${panelTitle('سجل مساحة العمل','سجل محلي لعمليات هذه الجلسة','log')}<div class="log-list" id="logList">${logsMarkup()}</div></section>`;$('#downloadLogs').onclick=()=>downloadText((model.state.logs??[]).map(l=>`${l.time??l.at??''} [${l.level??'info'}] ${l.message}`).join('\n'),'cortex-session-log.txt');renderReportFiles();}
-const reportLabels={'batch-plan.json':'خطة التغييرات المجمعة','batch-preview.txt':'معاينة التغييرات المجمعة','batch-snapshot.json':'لقطة ما قبل التعديلات','batch-result.json':'نتيجة التغييرات المجمعة','design.json':'قالب الهيكلة المعتمَد','role-grant-plan.json':'خطة منح الرتبة','role-grant-preview.txt':'معاينة منح الرتبة','role-grant-result.json':'نتيجة منح الرتبة','message-preview.txt':'معاينة رسالة البوت','message-plan.json':'خطة إرسال الرسالة','message-result.json':'نتيجة إرسال الرسالة','edit-conflict.json':'سبب تعارض الحفظ مع المعاينة','preview.md':'تقرير معاينة إعادة البناء','plan.json':'خطة الإنشاء والحذف الكاملة','approval.json':'بيانات اعتماد الخطة','snapshot.json':'نسخة حالة السيرفر قبل التنفيذ','result.json':'نتيجة إعادة البناء','execution-log.txt':'سجل خطوات التنفيذ','failure.json':'تفاصيل العملية غير المكتملة','edit-preview.txt':'تقرير مراجعة التعديل','edit-plan.json':'خطة التعديل الكاملة','edit-snapshot.json':'حالة السيرفر قبل التعديل','edit-result.json':'نتيجة حفظ التعديل'};
-function renderReportFiles(){let panel=$('#reportFilesPanel');if(!panel){$('#main').insertAdjacentHTML('beforeend',`<section class="panel report-panel" id="reportFilesPanel">${panelTitle('ملفات التقارير والنسخ المحلية','تنزيل التفاصيل الكاملة للخطط والعمليات في هذه الجلسة','folder')}<div class="panel-body" id="reportFiles"></div></section>`);panel=$('#reportFilesPanel');}const files=(model.state.reports?.files??[]).filter(file=>Object.hasOwn(reportLabels,file.name));$('#reportFiles').innerHTML=files.length?`<div class="report-files">${files.map(file=>`<button class="report-file" data-report="${esc(file.name)}">${icon('log')}<span><strong>${esc(reportLabels[file.name])}</strong><small>${esc(file.name)} · ${Number(file.size)<1024?Number(file.size)+' B':Math.ceil(Number(file.size)/1024)+' KB'}</small></span><b>تنزيل ${icon('arrow')}</b></button>`).join('')}</div>`:'<div class="no-result">ستظهر هنا ملفات المعاينة ونتائج التنفيذ عندما تُنشأ.</div>';$$('[data-report]',panel).forEach(button=>button.onclick=()=>downloadReport(button.dataset.report));}
-async function downloadReport(name){if(!Object.hasOwn(reportLabels,name))return;try{const response=await fetch('/api/report/'+encodeURIComponent(name),{headers:{'X-Cortex-Key':apiKey},cache:'no-store'});if(!response.ok)throw new Error('تعذّر تنزيل التقرير. قد لا يكون متاحًا في هذه الجلسة.');const blob=await response.blob(),url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download='cortex-'+name;link.click();setTimeout(()=>URL.revokeObjectURL(url),3000);}catch(error){toast(error.message,'error');}}
-function validateEditor(){const e=model.editor;if(!e)return false;if(e.values.name.trim().length>100){toast('الاسم يجب ألا يتجاوز 100 حرف.','error');$('#editName')?.focus();return false;}const hex=$('#blueprintColorHex')??$('#editColorHex');if(hex&&!/^#[0-9a-f]{6}$/i.test(hex.value)){toast('أدخل لونًا صحيحًا مثل #9888FF.','error');hex.focus();return false;}const limits={rate_limit_per_user:[0,21600],user_limit:[0,99]};for(const [key,[min,max]]of Object.entries(limits)){if(key in e.values&&(!Number.isInteger(Number(e.values[key]))||Number(e.values[key])<min||Number(e.values[key])>max)){toast(key==='user_limit'?'حد الأعضاء يجب أن يكون بين 0 و99.':'التهدئة يجب أن تكون بين 0 و21600 ثانية.','error');return false;}}return true;}
-function logsMarkup(){const logs=model.state.logs??[];return logs.length?[...logs].reverse().map(l=>`<div class="log-entry ${l.level==='error'?'error':''}">${icon(l.level==='error'?'info':'check')}<div class="log-message">${esc(typeof l.message==='string'?l.message:'تم تحديث حالة العملية.')}</div><time>${shortTime(l.time??l.at)}</time></div>`).join(''):'<div class="empty-state"><div class="empty-illustration">'+icon('log')+'</div><h2>مساحة جديدة، وسجل واضح</h2><p>ستظهر هنا عمليات هذه الجلسة بمجرد اتصالك بالسيرفر.</p></div>';}
-function renderLogsOnly(){const box=$('#logList');if(box)box.innerHTML=logsMarkup();renderReportFiles();}
+  bindSavedServers();
+  $('#guildId').insertAdjacentHTML(
+    'afterend',
+    button(
+      'حفظ السيرفر في القائمة',
+      'saveServerProfile',
+      'btn-ghost save-server-button',
+      'plus',
+      busy() || !state.profileStorageAvailable,
+    ),
+  );
+  $('#saveServerProfile').onclick = () => serverAction('server-save', model.config.guildId);
+  $('#botToken').oninput = (e) => {
+    model.config.token = e.target.value.trim();
+    markSavedDraftDirty();
+    model.credentialsDirty = true;
+    model.editor = null;
+    model.state.preview = null;
+    model.state.editPreview = null;
+    model.rebuildRead = false;
+  };
+  $('#guildId').classList.add('ltr');
+  $('#guildId').maxLength = 22;
+  $('#guildId').placeholder = 'Server ID';
+  $('#guildId').oninput = (e) => {
+    const value = e.target.value.replace(/\D/g, '');
+    e.target.value = value;
+    if (model.config.guildId !== value) {
+      model.config.guildId = value;
+      model.editor = null;
+      model.state.preview = null;
+      model.state.editPreview = null;
+      model.rebuildRead = false;
+    }
+  };
+  $('#revealToken').onclick = () => {
+    const input = $('#botToken');
+    input.type = input.type === 'password' ? 'text' : 'password';
+  };
+  $('#saveCredentials').onclick = () => action('credentials-save');
+  $('#forgetCredentials').onclick = () => action('credentials-forget');
+  $('#connectCheck').onclick = () => action('connect');
+  const stopButton = $('#toggleOnline');
+  if (stopButton) stopButton.onclick = () => action('stop');
+}
+function renderPermissions() {
+  const inv = inventory(),
+    diag = model.state.diagnostics;
+  $('#main').innerHTML = heading(
+    'صلاحيات البوت، أمامك بوضوح',
+    'اعرف ما يستطيع البوت إدارته، وما يحتاج تعديلًا من إعدادات السيرفر.',
+    'BOT PERMISSION CHECK',
+    button('فحص الآن', 'checkPermissions', 'btn-primary', 'key', busy()),
+  );
+  $('#checkPermissions').onclick = () => action('check');
+  if (!inv) {
+    $('#main').insertAdjacentHTML('beforeend', noInventory());
+    return;
+  }
+  const permissions = diag?.permissions ?? inv.permissions;
+  $('#main').insertAdjacentHTML(
+    'beforeend',
+    `<div class="notice green">${icon('shield')}<div><strong>${esc(diag?.botName ?? 'البوت')} · متصل ببيانات ${esc(guildName())}</strong>تُقرأ الصلاحيات من ديسكورد. رفع رتبة البوت أو تعديل صلاحياته يتم من إعدادات السيرفر.</div></div><section class="panel">${panelTitle('صلاحيات الوصول والإدارة', `${permissions.filter((p) => p.granted).length} صلاحية متاحة من أصل ${permissions.length}`, 'key')}<div class="panel-body permission-columns">${permissions.map((p) => `<div class="permission-row"><div><span>${esc(permissionLabel(p.name))}</span><br><code>${esc(p.name)}</code></div><span class="pill ${p.granted ? '' : 'red'}">${icon(p.granted ? 'check' : 'close')} ${p.granted ? 'متاحة' : 'غير ممنوحة'}</span></div>`).join('')}</div></section>${diag?.inaccessibleChannels?.length ? `<div class="notice yellow" style="margin-top:20px">${icon('lock')}<div><strong>قنوات لا يستطيع البوت إدارتها</strong>${diag.inaccessibleChannels.map((c) => esc(c.name)).join('، ')}</div></div>` : ''}`,
+  );
+}
 
-$$('[data-page]').forEach(button=>button.onclick=()=>go(button.dataset.page));$('#serverSwitch').onclick=()=>{if(inventory()){go('profile');return;}go('settings');if(guildId())toast('حمّل بيانات السيرفر أولًا لفتح التخصيص.');};$('.brand').onclick=e=>{e.preventDefault();go('overview');};$('#confirmDialog').addEventListener('click',event=>{if(event.target===$('#confirmDialog'))$('#confirmDialog').close();});
-window.addEventListener('beforeunload',event=>{if(draftStore.hasUnsaved()||model.editor?.draftConflict||[...editorDrafts.values()].some(d=>d.editor.draftConflict)||window.CortexDesigner?.hasUnsaved?.()){draftStore.flushAll();window.CortexDesigner?.flushAll?.();event.preventDefault();event.returnValue='';}});
-window.addEventListener('pagehide',()=>{draftStore.flushAll();fetch('/api/action',{method:'POST',keepalive:true,headers:{'X-Cortex-Key':apiKey,'Content-Type':'application/json'},body:JSON.stringify({action:'client-closed',config:{}})}).catch(()=>{});});
-window.addEventListener('cortex-language-changed',()=>{updateChrome();requestAnimationFrame(fitEntityLayout);});
-window.addEventListener('resize',fitEntityLayout);
-new ResizeObserver(()=>requestAnimationFrame(fitEntityLayout)).observe($('#main'));
-window.addEventListener('cortex-language-error',()=>toast(window.CortexI18n?.language==='en'?'Could not save the language. Please try again.':'تعذّر حفظ اللغة. حاول مجددًا.','error'));
-render();pollState();setInterval(()=>pollState(),1200);setInterval(updateBotUptime,1000);
+async function previewCustomDesign() {
+  try {
+    await window.CortexDesigner.flush(guildId());
+    const design = window.CortexDesigner.current(guildId());
+    if (!design) {
+      toast('انتظر تحميل قالب الهيكلة أولًا.');
+      return;
+    }
+    model.rebuildRead = false;
+    model.previewDesignSignature = JSON.stringify(design);
+    action('preview', { design });
+  } catch (error) {
+    toast(error.message, 'error');
+  }
+}
+function renderRedesign() {
+  const preview = model.state.preview;
+  $('#main').innerHTML =
+    `<section class="panel" id="designBuilder"></section><div class="redesign-grid"><section class="panel">${panelTitle('مسار إعادة التصميم', 'ثلاث خطوات واضحة، وتأكيد قبل أي حذف', 'spark')}<div class="panel-body"><div class="workflow-step ${inventory() ? 'complete' : ''}"><span class="step-number">${inventory() ? icon('check') : '01'}</span><div><h3>ابدأ من السيرفر الحالي</h3><p>حمّل القنوات والرتب وافحص صلاحيات البوت قبل إنشاء أي خطة.</p>${button('تحديث بيانات السيرفر', 'designCheck', 'btn-ghost btn-small', 'refresh', busy())}</div></div><div class="workflow-step ${preview ? 'complete' : ''}"><span class="step-number">${preview ? icon('check') : '02'}</span><div><h3>أنشئ الخطة وراجع التفاصيل</h3><p>معاينة منفصلة تعرض الإنشاء والتحديث والحذف، مع الرتب والقنوات المحفوظة وتوزيع الأعضاء.</p>${button('إنشاء معاينة كاملة', 'designPreview', 'btn-primary btn-small', 'eye', busy())}</div></div><div class="workflow-step"><span class="step-number">03</span><div><h3>نفّذ بعد موافقتك الصريحة</h3><p>يُنشأ الجديد أولًا. لا يبدأ حذف القديم إلا بعد التحقق من الخطة وتأكيد رقم السيرفر وعبارة الحذف.</p>${button('مراجعة تأكيد التنفيذ', 'designRebuild', 'btn-danger btn-small', 'shield', busy() || !preview?.ready || model.state.demo || !model.rebuildRead)}</div></div></div></section><section class="panel">${panelTitle('تصميم احترافي. أساس آمن.', 'قواعد ثابتة ترافق كل خطة', 'shield')}<div class="panel-body"><ul class="safety-list"><li>${icon('check')}<span>@everyone ورتب البوتات والتكاملات لا تُحذف.</span></li><li>${icon('check')}<span>قنوات Community المحمية مثل rules وmoderator-only محفوظة.</span></li><li>${icon('check')}<span>الرتب الموزعة تُحفظ عندما لا يوجد نقل آمن لتوزيعها.</span></li><li>${icon('check')}<span>لا طرد، لا حظر، ولا حذف للسيرفر.</span></li><li>${icon('check')}<span>تنفيذ تدريجي يحترم حدود Discord API ويمنع التكرار.</span></li></ul><div class="notice" style="margin-top:22px;margin-bottom:0">${icon('info')}<div>الخطة تُبنى على حالة السيرفر الحالية. أي تغيّر مؤثر يستلزم معاينة جديدة.</div></div></div></section></div>${preview ? `<section class="panel report-panel">${panelTitle('تقرير الخطة المقترحة', 'راجع جميع التفاصيل قبل إتاحة زر التنفيذ', 'eye', button('تنزيل التقرير', 'downloadPreview', 'btn-ghost btn-small', 'log'))}<div class="report-content">${formatReport(preview.summary ?? preview.report ?? 'تم إنشاء الخطة. افتح التقرير لمراجعة التفاصيل.')}</div><div class="panel-body"><div class="rebuild-approved"><label><input type="checkbox" id="reviewedPlan" ${model.rebuildRead ? 'checked' : ''}><span>راجعت تقرير الإنشاء والحذف والرتب المحفوظة، وأرغب في فتح خطوة التأكيد الإضافي.</span></label></div></div></section>` : ''}`;
+  window.CortexDesigner.mount($('#designBuilder'), {
+    guildId: guildId(),
+    inventory: inventory(),
+    busy: busy(),
+    permissionLabel,
+    onChange: () => {
+      model.state.preview = null;
+      model.rebuildRead = false;
+      model.previewDesignSignature = null;
+      $('#designRebuild').disabled = true;
+      $('#main > .report-panel')?.remove();
+    },
+    onPreview: previewCustomDesign,
+  });
+  $('#designCheck').onclick = () => action('inventory');
+  $('#designPreview').onclick = previewCustomDesign;
+  $('#designRebuild').onclick = showRebuildDialog;
+  const reviewed = $('#reviewedPlan');
+  if (reviewed)
+    reviewed.onchange = () => {
+      model.rebuildRead = reviewed.checked;
+      $('#designRebuild').disabled =
+        busy() || !preview?.ready || model.state.demo || !model.rebuildRead;
+    };
+  const download = $('#downloadPreview');
+  if (download)
+    download.onclick = () => downloadText(preview.summary ?? '', `cortex-preview-${guildId()}.txt`);
+}
+function formatReport(text) {
+  return String(text)
+    .split(/\r?\n/)
+    .map((raw) => {
+      const line = raw.trim();
+      if (!line) return '';
+      if (line.startsWith('### ')) return '<h3>' + esc(line.slice(4)) + '</h3>';
+      if (line.startsWith('## ')) return '<h2>' + esc(line.slice(3)) + '</h2>';
+      if (line.startsWith('# ')) return '<h2>' + esc(line.slice(2)) + '</h2>';
+      const safe = esc(line.replace(/^[-*] /, ''))
+        .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+        .replace(
+          /\b(CREATE|UPDATE|PRESERVE|DELETE|REUSE|KEEP)\b/g,
+          (all) =>
+            `<span class="report-action ${all === 'DELETE' ? 'delete' : ['PRESERVE', 'KEEP'].includes(all) ? 'preserve' : ''}">${all}</span>`,
+        );
+      return `<p>${safe}</p>`;
+    })
+    .join('');
+}
+function downloadText(text, filename) {
+  const blob = new Blob([text], { type: 'text/plain;charset=utf-8' }),
+    url = URL.createObjectURL(blob),
+    a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 3000);
+}
+function showRebuildDialog() {
+  if (!model.state.preview?.ready || model.state.demo || !model.rebuildRead) return;
+  showDialog(
+    `<div class="dialog-symbol danger">${icon('shield')}</div><h2>تأكيد إعادة بناء السيرفر</h2><p>ستُنشأ عناصر التصميم الجديد أولًا، ثم تُزال العناصر القديمة المسموح بحذفها حسب الخطة. قد يُفقد محتوى القنوات المحذوفة. لا تنفّذ إلا بعد مراجعة التقرير.</p><div class="notice yellow">${icon('info')}<div><strong translate="no">${esc(guildName())}</strong>رقم السيرفر: <code>${esc(guildId())}</code></div></div><div class="field"><label for="confirmGuildId">اكتب رقم السيرفر المحدد للتأكيد</label><input class="ltr" id="confirmGuildId" type="text" autocomplete="off" placeholder="رقم السيرفر" spellcheck="false"></div><div class="field"><label for="confirmDelete">اكتب العبارة التالية كما هي<br><code>DELETE_ALL_OLD_CHANNELS_AND_ROLES</code></label><input class="ltr" id="confirmDelete" type="text" autocomplete="off" spellcheck="false" placeholder="عبارة التأكيد"></div><div class="dialog-actions"><button class="btn btn-ghost" value="cancel">إلغاء</button><button class="btn btn-danger" type="button" id="confirmRebuild" disabled>${icon('shield')} تأكيد وبدء التنفيذ</button></div>`,
+  );
+  const validate = () =>
+    ($('#confirmRebuild').disabled =
+      $('#confirmGuildId').value !== guildId() ||
+      $('#confirmDelete').value !== 'DELETE_ALL_OLD_CHANNELS_AND_ROLES');
+  $('#confirmGuildId').oninput = validate;
+  $('#confirmDelete').oninput = validate;
+  $('#confirmRebuild').onclick = () => {
+    const config = {
+      confirmGuildId: $('#confirmGuildId').value,
+      confirmDelete: $('#confirmDelete').value,
+      design: window.CortexDesigner.current(guildId()),
+    };
+    $('#confirmDialog').close();
+    model.rebuildRead = false;
+    action('rebuild', config);
+  };
+}
+
+function officialInvite(value) {
+  try {
+    const u = new URL(value);
+    return u.protocol === 'https:' &&
+      u.hostname === 'discord.com' &&
+      u.pathname === '/oauth2/authorize' &&
+      u.searchParams.get('guild_id') === guildId()
+      ? u.href
+      : null;
+  } catch {
+    return null;
+  }
+}
+function addInviteTools() {
+  const diag = model.state.diagnostics;
+  if (!inventory() || !diag) return;
+  const normal = officialInvite(diag.inviteURL),
+    admin = officialInvite(diag.adminInviteURL);
+  if (!normal && !admin) return;
+  $('.notice.green')?.insertAdjacentHTML(
+    'afterend',
+    `<div class="invite-tools"><span>تحتاج منح صلاحيات البوت؟</span>${normal ? button('فتح دعوة الصلاحيات المطلوبة', 'openInvite', 'btn-ghost', 'link') : ''}${admin ? button('دعوة Administrator…', 'adminInvite', 'btn-ghost', 'shield') : ''}</div>`,
+  );
+  const normalButton = $('#openInvite');
+  if (normalButton)
+    normalButton.onclick = () => window.open(normal, '_blank', 'noopener,noreferrer');
+  const adminButton = $('#adminInvite');
+  if (adminButton)
+    adminButton.onclick = () => {
+      showDialog(
+        `<div class="dialog-symbol">${icon('shield')}</div><h2>دعوة بصلاحية Administrator</h2><p>تمنح هذه الدعوة البوت صلاحية إدارة كاملة في السيرفر. استخدمها فقط إذا كنت تريد ذلك. يمكنك منح الصلاحيات المطلوبة من الدعوة العادية.</p><div class="notice"><div><strong translate="no">${esc(guildName())}</strong>سيفتح رابط ديسكورد الرسمي؛ راجع صفحة الموافقة هناك.</div></div><div class="dialog-actions"><button class="btn btn-ghost" value="cancel">إلغاء</button><button class="btn btn-primary" type="button" id="confirmAdminInvite">فتح الدعوة الرسمية ${icon('link')}</button></div>`,
+      );
+      $('#confirmAdminInvite').onclick = () => {
+        $('#confirmDialog').close();
+        window.open(admin, '_blank', 'noopener,noreferrer');
+      };
+    };
+}
+function showDemoDesignNote() {
+  $('#main').insertAdjacentHTML(
+    'afterbegin',
+    `<div class="notice yellow">${icon('eye')}<div><strong>استكشف التصميم بأمان</strong>هذه بيانات توضيحية فقط. يمكنك حفظ القالب محليًا ومعاينة التقارير؛ تغييرات Discord وإعادة البناء الفعلي معطّلة.</div></div>`,
+  );
+}
+function renderLogs() {
+  $('#main').innerHTML =
+    heading(
+      'كل خطوة لها سجل',
+      'تابع عمليات الاتصال والفحص والمراجعة والتنفيذ من مكان واحد.',
+      'ACTIVITY & OPERATION LOG',
+      button('تنزيل السجل', 'downloadLogs', 'btn-ghost', 'log'),
+    ) +
+    `<section class="panel">${panelTitle('سجل مساحة العمل', 'سجل محلي لعمليات هذه الجلسة', 'log')}<div class="log-list" id="logList">${logsMarkup()}</div></section>`;
+  $('#downloadLogs').onclick = () =>
+    downloadText(
+      (model.state.logs ?? [])
+        .map((l) => `${l.time ?? l.at ?? ''} [${l.level ?? 'info'}] ${l.message}`)
+        .join('\n'),
+      'cortex-session-log.txt',
+    );
+  renderReportFiles();
+}
+const reportLabels = {
+  'batch-plan.json': 'خطة التغييرات المجمعة',
+  'batch-preview.txt': 'معاينة التغييرات المجمعة',
+  'batch-snapshot.json': 'لقطة ما قبل التعديلات',
+  'batch-result.json': 'نتيجة التغييرات المجمعة',
+  'design.json': 'قالب الهيكلة المعتمَد',
+  'role-grant-plan.json': 'خطة منح الرتبة',
+  'role-grant-preview.txt': 'معاينة منح الرتبة',
+  'role-grant-result.json': 'نتيجة منح الرتبة',
+  'message-preview.txt': 'معاينة رسالة البوت',
+  'message-plan.json': 'خطة إرسال الرسالة',
+  'message-result.json': 'نتيجة إرسال الرسالة',
+  'edit-conflict.json': 'سبب تعارض الحفظ مع المعاينة',
+  'preview.md': 'تقرير معاينة إعادة البناء',
+  'plan.json': 'خطة الإنشاء والحذف الكاملة',
+  'approval.json': 'بيانات اعتماد الخطة',
+  'snapshot.json': 'نسخة حالة السيرفر قبل التنفيذ',
+  'result.json': 'نتيجة إعادة البناء',
+  'execution-log.txt': 'سجل خطوات التنفيذ',
+  'failure.json': 'تفاصيل العملية غير المكتملة',
+  'edit-preview.txt': 'تقرير مراجعة التعديل',
+  'edit-plan.json': 'خطة التعديل الكاملة',
+  'edit-snapshot.json': 'حالة السيرفر قبل التعديل',
+  'edit-result.json': 'نتيجة حفظ التعديل',
+};
+function renderReportFiles() {
+  let panel = $('#reportFilesPanel');
+  if (!panel) {
+    $('#main').insertAdjacentHTML(
+      'beforeend',
+      `<section class="panel report-panel" id="reportFilesPanel">${panelTitle('ملفات التقارير والنسخ المحلية', 'تنزيل التفاصيل الكاملة للخطط والعمليات في هذه الجلسة', 'folder')}<div class="panel-body" id="reportFiles"></div></section>`,
+    );
+    panel = $('#reportFilesPanel');
+  }
+  const files = (model.state.reports?.files ?? []).filter((file) =>
+    Object.hasOwn(reportLabels, file.name),
+  );
+  $('#reportFiles').innerHTML = files.length
+    ? `<div class="report-files">${files.map((file) => `<button class="report-file" data-report="${esc(file.name)}">${icon('log')}<span><strong>${esc(reportLabels[file.name])}</strong><small>${esc(file.name)} · ${Number(file.size) < 1024 ? Number(file.size) + ' B' : Math.ceil(Number(file.size) / 1024) + ' KB'}</small></span><b>تنزيل ${icon('arrow')}</b></button>`).join('')}</div>`
+    : '<div class="no-result">ستظهر هنا ملفات المعاينة ونتائج التنفيذ عندما تُنشأ.</div>';
+  $$('[data-report]', panel).forEach(
+    (button) => (button.onclick = () => downloadReport(button.dataset.report)),
+  );
+}
+async function downloadReport(name) {
+  if (!Object.hasOwn(reportLabels, name)) return;
+  try {
+    const response = await fetch('/api/report/' + encodeURIComponent(name), {
+      headers: { 'X-Cortex-Key': apiKey },
+      cache: 'no-store',
+    });
+    if (!response.ok) throw new Error('تعذّر تنزيل التقرير. قد لا يكون متاحًا في هذه الجلسة.');
+    const blob = await response.blob(),
+      url = URL.createObjectURL(blob),
+      link = document.createElement('a');
+    link.href = url;
+    link.download = 'cortex-' + name;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 3000);
+  } catch (error) {
+    toast(error.message, 'error');
+  }
+}
+function validateEditor() {
+  const e = model.editor;
+  if (!e) return false;
+  if (e.values.name.trim().length > 100) {
+    toast('الاسم يجب ألا يتجاوز 100 حرف.', 'error');
+    $('#editName')?.focus();
+    return false;
+  }
+  const hex = $('#blueprintColorHex') ?? $('#editColorHex');
+  if (hex && !/^#[0-9a-f]{6}$/i.test(hex.value)) {
+    toast('أدخل لونًا صحيحًا مثل #9888FF.', 'error');
+    hex.focus();
+    return false;
+  }
+  const limits = { rate_limit_per_user: [0, 21600], user_limit: [0, 99] };
+  for (const [key, [min, max]] of Object.entries(limits)) {
+    if (
+      key in e.values &&
+      (!Number.isInteger(Number(e.values[key])) ||
+        Number(e.values[key]) < min ||
+        Number(e.values[key]) > max)
+    ) {
+      toast(
+        key === 'user_limit'
+          ? 'حد الأعضاء يجب أن يكون بين 0 و99.'
+          : 'التهدئة يجب أن تكون بين 0 و21600 ثانية.',
+        'error',
+      );
+      return false;
+    }
+  }
+  return true;
+}
+function logsMarkup() {
+  const logs = model.state.logs ?? [];
+  return logs.length
+    ? [...logs]
+        .reverse()
+        .map(
+          (l) =>
+            `<div class="log-entry ${l.level === 'error' ? 'error' : ''}">${icon(l.level === 'error' ? 'info' : 'check')}<div class="log-message">${esc(typeof l.message === 'string' ? l.message : 'تم تحديث حالة العملية.')}</div><time>${shortTime(l.time ?? l.at)}</time></div>`,
+        )
+        .join('')
+    : '<div class="empty-state"><div class="empty-illustration">' +
+        icon('log') +
+        '</div><h2>مساحة جديدة، وسجل واضح</h2><p>ستظهر هنا عمليات هذه الجلسة بمجرد اتصالك بالسيرفر.</p></div>';
+}
+function renderLogsOnly() {
+  const box = $('#logList');
+  if (box) box.innerHTML = logsMarkup();
+  renderReportFiles();
+}
+
+$$('[data-page]').forEach((button) => (button.onclick = () => go(button.dataset.page)));
+$('#serverSwitch').onclick = () => {
+  if (inventory()) {
+    go('profile');
+    return;
+  }
+  go('settings');
+  if (guildId()) toast('حمّل بيانات السيرفر أولًا لفتح التخصيص.');
+};
+$('.brand').onclick = (e) => {
+  e.preventDefault();
+  go('overview');
+};
+$('#confirmDialog').addEventListener('click', (event) => {
+  if (event.target === $('#confirmDialog')) $('#confirmDialog').close();
+});
+window.addEventListener('beforeunload', (event) => {
+  if (
+    draftStore.hasUnsaved() ||
+    model.editor?.draftConflict ||
+    [...editorDrafts.values()].some((d) => d.editor.draftConflict) ||
+    window.CortexDesigner?.hasUnsaved?.()
+  ) {
+    draftStore.flushAll();
+    window.CortexDesigner?.flushAll?.();
+    event.preventDefault();
+    event.returnValue = '';
+  }
+});
+window.addEventListener('pagehide', () => {
+  draftStore.flushAll();
+  fetch('/api/action', {
+    method: 'POST',
+    keepalive: true,
+    headers: { 'X-Cortex-Key': apiKey, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'client-closed', config: {} }),
+  }).catch(() => {});
+});
+window.addEventListener('cortex-language-changed', () => {
+  updateChrome();
+  requestAnimationFrame(fitEntityLayout);
+});
+window.addEventListener('resize', fitEntityLayout);
+new ResizeObserver(() => requestAnimationFrame(fitEntityLayout)).observe($('#main'));
+window.addEventListener('cortex-language-error', () =>
+  toast(
+    window.CortexI18n?.language === 'en'
+      ? 'Could not save the language. Please try again.'
+      : 'تعذّر حفظ اللغة. حاول مجددًا.',
+    'error',
+  ),
+);
+render();
+pollState();
+setInterval(() => pollState(), 1200);
+setInterval(updateBotUptime, 1000);

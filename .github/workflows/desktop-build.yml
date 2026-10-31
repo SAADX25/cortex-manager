@@ -17,6 +17,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - run: npm ci
+      - run: npm run check
       - run: npm test
       - run: npm run desktop:test
       - name: Package application folder
@@ -24,8 +26,8 @@ jobs:
         run: |
           $package = Join-Path $env:RUNNER_TEMP 'Cortex-Manager-6'
           New-Item -ItemType Directory -Path $package | Out-Null
-          Copy-Item -LiteralPath 'CortexManager.exe','Start-Cortex-Manager.cmd','package.json','README.md','PROPOSED_CHANGES.md' -Destination $package
-          Copy-Item -LiteralPath 'src','desktop','test','.github' -Destination $package -Recurse
+          Copy-Item -LiteralPath 'CortexManager.exe','Start-Cortex-Manager.cmd','package.json','package-lock.json','README.md','PROPOSED_CHANGES.md','CONTRIBUTING.md','.prettierrc.json','.prettierignore','.editorconfig','.gitattributes' -Destination $package
+          Copy-Item -LiteralPath 'src','desktop','assets','deploy','test','scripts','docs','.github' -Destination $package -Recurse
       - uses: actions/upload-artifact@v4
         with:
           name: Cortex-Manager-6-Windows

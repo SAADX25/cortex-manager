@@ -4,7 +4,7 @@ A manual redesign workflow for the existing `SAADX25/cortex-manager` project and
 
 ## Local Windows app
 
-Open **CortexManager.exe in the project root**, or double-click **Start-Cortex-Manager.cmd** to build/open it. Version 6 uses installed Microsoft Edge in application mode, with a modern Arabic dashboard, scalable SVG icons, full-color emoji, readable typography, searchable channel/category and role views, and dedicated inspectors. It opens as a Windows application window. Keep the complete project folder beside the executable. Windows, Microsoft Edge, Node.js 22.4+ and .NET Framework 4.8 are required; administrator elevation is not required. See the [Arabic desktop guide](desktop/README.ar.md).
+Open **CortexManager.exe in the project root**, or double-click **Start-Cortex-Manager.cmd** to build/open it. Version 6 uses installed Microsoft Edge in application mode, with a modern Arabic dashboard, scalable SVG icons, full-color emoji, readable typography, searchable channel/category and role views, and dedicated inspectors. It opens as a Windows application window. Keep the complete project folder beside the executable. Windows, Microsoft Edge, Node.js 22.9+ and .NET Framework 4.8 are required; administrator elevation is not required. See the [Arabic desktop guide](desktop/README.ar.md).
 
 The app shows actual server counts after you explicitly connect. Create categories, text/voice channels and roles; edit names, parent categories, topics, slowmode, voice limits, role colors, role permission flags and channel overwrite states. Each change has a read-only before/after review and explicit Save confirmation. The editor preserves unknown permission bits, member overwrites and untouched entries; protected entities are read-only. Source/configuration drift invalidates approval. Each save snapshots configuration before a single POST/PATCH and writes `edit-result.json`; no editor operation deletes entities or changes member-role assignments. Reports and log events are formatted for review.
 
@@ -16,11 +16,11 @@ The supported binary is now **`CortexManager.exe` at the project root**, marked 
 
 Each session stores reviews and reports under `out/desktop-modern/sessions/session-.../out/`. Opening another session requires a new preview; rebuilding requires reading the proposal and manually entering the guild ID and deletion phrase. The Online connection is independent of rebuild jobs and requires leaving the app/computer online. GitHub Actions still offers the separate manual Discord workflow; **Build Windows desktop app** is a manual build-only workflow that packages the application without connecting to Discord.
 
-## Permanent preservation
+## Role manageability
 
-`★ OWNER ★` and `★ CO_OWNER ★` are excluded from every role edit, deletion and assignment operation. The workflow never renames, recreates, reorders, or removes members from these roles. Their role permissions stay unchanged. Existing leadership roles receive access overwrites in new private areas.
+Role names are not protected aliases. Custom roles named OWNER or CO_OWNER follow the same editing, assignment and reviewed cleanup rules as any other role. The actual Discord server owner is a guild property, not a role name.
 
-The workflow does not issue any role-position/reorder requests. Discord can renumber numeric `position` values when other roles are created or deleted; the relative hierarchy of leadership and surviving existing roles stays unchanged and is checked before deletion and at completion.
+The workflow does not issue any role-position/reorder requests. Discord can renumber numeric `position` values when other roles are created or deleted; the relative hierarchy of protected surviving roles stays unchanged and is checked before deletion and at completion.
 
 It also preserves `@everyone`, integration/bot-managed roles (including Cortex Manager), roles held by the bot, and roles at or above the bot. Preserved roles are reported instead of blocking ordinary cleanup. A design name matching a protected role is preserved without patching it or creating a duplicate.
 
@@ -31,7 +31,7 @@ Community `rules_channel_id` and `public_updates_channel_id`, channels named `ru
 This repository has no push, schedule or automatic rebuild trigger. Both operations require a manual `workflow_dispatch`.
 
 1. After reviewing these source changes, place them in the existing repository. Configure Actions secret `DISCORD_BOT_TOKEN` and repository variable `DISCORD_GUILD_ID`.
-2. Enable **Server Members Intent** in the Discord Developer Portal for complete member-role backups. The bot needs Manage Roles, Manage Channels and View Channel. Give it the specific voice/moderation capabilities listed in the preview if needed. Put its role above roles you want it to replace; **do not move OWNER or CO_OWNER to accommodate the workflow**. Administrator is not required.
+2. Enable **Server Members Intent** in the Discord Developer Portal for complete member-role backups. The bot needs Manage Roles, Manage Channels and View Channel. Give it the specific voice/moderation capabilities listed in the preview if needed. Put its role above roles you want it to replace; roles at or above the bot remain unmanageable. Administrator is not required.
 3. Run **Cortex Manager - Reviewed Server Redesign**, with `operation: preview`. This only reads Discord. Download `cortex-preview-<run ID>` and review the Actions summary and `plan.json`. Actual server deletion IDs and assignment exceptions come from this preview.
 4. If you want to migrate an assigned obsolete role, edit `ROLE_MIGRATIONS` in `src/design.mjs`, mapping its exact old role ID to a new role key. Review the target role's powers. Commit the mapping and run a fresh preview; role names alone never automatically grant new staff assignments.
 5. Only when you approve that exact preview, manually run the same workflow on the **same commit**, with `operation: rebuild`, `preview_run_id` set to the successful preview run's numerical ID, `confirm_guild_id` equal to the configured guild ID, and `confirm_delete` exactly `DELETE_ALL_OLD_CHANNELS_AND_ROLES`.
@@ -53,20 +53,20 @@ A preview containing real blockers fails while still saving reports. Intentional
 
 Artifacts are retained for seven days and contain member IDs and role assignments; use appropriate repository/Actions access controls.
 
-| File | Contents |
-|---|---|
-| `snapshot.json` | Reviewed guild, roles, channel configuration and member-role inventory (or an explicit inventory failure) |
-| `preview.md` | Full creation/update/deletion/preservation plan, role colors/powers, migration exceptions and permission gaps |
-| `plan.json` | Machine-readable proposal, exact entity IDs and plan hash |
-| `approval.json` | Preview run, commit, guild, source digest and approval hash |
-| `before-delete.json` | Fresh configuration and available assignments after creation/migration |
-| `execution-log.txt` | Completed write operations and introduction-message warnings |
-| `result.json` | Created, updated, deleted and retained IDs, migration results and partial failure details |
-| `failure.json` | CLI failure reason, including confirmation/provenance/preflight failures |
+| File                 | Contents                                                                                                      |
+| -------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `snapshot.json`      | Reviewed guild, roles, channel configuration and member-role inventory (or an explicit inventory failure)     |
+| `preview.md`         | Full creation/update/deletion/preservation plan, role colors/powers, migration exceptions and permission gaps |
+| `plan.json`          | Machine-readable proposal, exact entity IDs and plan hash                                                     |
+| `approval.json`      | Preview run, commit, guild, source digest and approval hash                                                   |
+| `before-delete.json` | Fresh configuration and available assignments after creation/migration                                        |
+| `execution-log.txt`  | Completed write operations and introduction-message warnings                                                  |
+| `result.json`        | Created, updated, deleted and retained IDs, migration results and partial failure details                     |
+| `failure.json`       | CLI failure reason, including confirmation/provenance/preflight failures                                      |
 
 **Channel deletion is irreversible. Messages, attachments and thread history are not backed up or restored.** Configuration/member backups are not an automatic rollback. If execution stops, some new entities may exist; a fresh preview discovers and reuses unique matching entities. Ambiguous duplicates block the next rebuild for review. Creation requests are not blindly retried after ambiguous network/server failures.
 
-The write allowlist has no guild deletion, kick, ban, member-removal, full member-edit or role-reorder route. Calls are serialized, rate-limit headers and 429 retry delays are respected, and transient reads/idempotent requests are retried. No member is automatically granted a new leadership role.
+The write allowlist has no guild deletion, kick, ban, member-removal, full member-edit or role-reorder route. Calls are serialized, rate-limit headers and 429 retry delays are respected, and transient reads/idempotent requests are retried. Role assignments require a reviewed operation or an explicit migration mapping.
 
 ## Layout and limitations
 
@@ -78,12 +78,15 @@ Discord's channel list excludes threads. Deleting a parent channel also destroys
 
 ## Local development
 
-Use Node.js 22.4 or later, with no external npm packages:
+Use Node.js 22.9 or later. Install the locked dependencies before development:
 
 ```powershell
+npm ci
+npm run check
 npm test
-npm run preview
 ```
+
+Read [CONTRIBUTING.md](CONTRIBUTING.md) for development and localization conventions, and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the module map. `npm run preview` is a separate live, read-only operation requiring your own configured Discord credentials.
 
 Set the Discord token and guild ID locally through your environment only if you intend to run a live read-only preview. Tests use a simulated Discord server and no credentials. `npm run snapshot` only exports configuration/inventory; it is not an approval. Local `npm run rebuild` requires the exact confirmation environment values and the matching files produced by a separate local preview. GitHub Actions additionally validates preview-run provenance and commit identity.
 

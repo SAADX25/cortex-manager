@@ -3,484 +3,160 @@
 // Only interface text is localized. Names, drafts, JSON, reviewed payloads and
 // reports remain original data. Existing DOM nodes and form values are retained.
 (() => {
-const en = {
-'البثوث والمقاطع':'Streams & videos',
-'تغيّر قالب الهيكلة في نافذة أخرى. صدّر مسودتك قبل إعادة التحميل.':'The blueprint changed in another window. Export your draft before reloading.',
-'مسودة غير مكتملة':'Incomplete draft',
-'توجد مسودة أقدم لهذا العنصر. راجعها في مساحة التغييرات قبل استبدالها.':'An older draft exists for this item. Review it in the change workspace before replacing it.',
-'مسودة متعارضة؛ راجع مساحة التغييرات':'Draft conflict; review the change workspace',
-'يمكن مراجعة 25 تعديلًا في الخطة الواحدة.':'A review can include up to 25 edits.',
-'مسودات محلية':'Local drafts',
-'أعد التحليل بعد تغيير الاختيار':'Analyze again after changing the selection',
-'اضغط تحليل الصلاحيات لعرض نتيجة حديثة.':'Select Analyze permissions for a fresh result.',
-"مساحة التغييرات":"Change workspace",
-"محاكي الصلاحيات":"Permission simulator",
-"إضافة للمراجعة":"Add to review",
-"أُضيف التعديل إلى مساحة التغييرات للمراجعة.":"Change added to the review workspace.",
-"جارٍ استعادة المسودات…":"Restoring drafts…",
-"تغييرات بانتظار الحفظ…":"Changes waiting to save…",
-"جارٍ حفظ المسودات…":"Saving drafts…",
-"المسودات محفوظة تلقائيًا":"Drafts saved automatically",
-"تعذّر حفظ أو استعادة المسودات":"Could not save or restore drafts",
-"تغييراتك، في مساحة واحدة":"Your changes, in one workspace",
-"احفظ مسوداتك تلقائيًا، واجمع تعديلات الغرف والرتب في مراجعة واحدة.":"Automatically save drafts and review channel and role edits together.",
-"تصدير المسودات":"Export drafts",
-"للمراجعة":"For review",
-"مسودات محفوظة":"Saved drafts",
-"حفظ الآن":"Save now",
-"التجميع للعناصر الموجودة. الإنشاء والنقل لهما معاينة مستقلة. تعديل أذونات قسم كامل يُراجع منفردًا.":"Group edits to existing items. Creation, reordering and category overwrite edits are reviewed separately.",
-"المسودات تحتاج مراجعة":"Drafts need attention",
-"صدّر مسودتك للاحتفاظ بنسخة قبل إعادة تحميل النافذة.":"Export your drafts to keep a copy before reloading the window.",
-"المسودات محفوظة محليًا. حمّل السيرفر للتحقق منها وإتاحة المعاينة.":"Drafts are stored locally. Load the server to verify and preview them.",
-"رتبة":"Role",
-"اسم السيرفر":"Server name",
-"غرفة / قسم":"Channel / category",
-"عنصر جديد":"New item",
-"تحتاج بيانات حديثة":"Needs fresh data",
-"ضمن المراجعة":"Included in review",
-"مسودة محلية":"Local draft",
-"مسودة بلا اسم":"Unnamed draft",
-"فتح المسودة":"Open draft",
-"حذف المسودة المحلية":"Delete local draft",
-"تغيّر العنصر أو لم تُحمّل بياناته بعد. افتح المسودة لمراجعتها قبل ضمّها للخطة.":"This item changed or has not been loaded. Open its draft for review before staging it.",
-"ابدأ بتعديل غرفة أو رتبة":"Start with a channel or role edit",
-"تُحفظ المسودة تلقائيًا. اضغط إضافة للمراجعة لجمع التعديلات هنا.":"Drafts save automatically. Select Add to review to collect your edits here.",
-"فتح الغرف":"Open channels",
-"المراجعة المعتمدة":"Reviewed changes",
-"اكتملت التعديلات":"Changes completed",
-"توقفت العملية؛ راجع ما اكتمل":"Execution stopped; review completed items",
-"نتيجة التعديل الأخير غير مؤكدة. حدّث السيرفر قبل أي محاولة جديدة.":"The last edit has an uncertain result. Refresh the server before trying again.",
-"تنزيل تقرير التنفيذ":"Download execution report",
-"عرض توضيحي · التنفيذ الحقيقي معطّل":"Demo · real execution disabled",
-"راجع كل تغيير قبل تأكيد حفظه في السيرفر.":"Review every change before confirming execution.",
-"معاينة التغييرات":"Preview changes",
-"تأكيد التغييرات":"Confirm changes",
-"تغيّر العنصر منذ حفظ المسودة":"The item changed after this draft was saved",
-"راجع الفرق قبل تحميل مسودتك فوق البيانات الحالية. يلزم بعدها إجراء معاينة جديدة.":"Review the differences before loading your draft over current data. A fresh preview is required.",
-"تحميل المسودة للمراجعة":"Load draft for review",
-"العنصر لم يعد موجودًا في السيرفر؛ تبقى مسودته محفوظة.":"This item no longer exists. Its local draft is retained.",
-"هذا العنصر محمي أو أصبح غير قابل للتعديل.":"This item is protected or is no longer editable.",
-"تأكيد التغييرات المجمعة":"Confirm grouped changes",
-"تُنفّذ بالتسلسل، وتتوقف التعديلات المتبقية عند الخطأ. يُحفظ تقرير بما اكتمل.":"Changes run sequentially and stop on failure. A report records completed items.",
-"اكتب رقم السيرفر للتأكيد":"Type the server ID to confirm",
-"أوافق على منح صلاحية Administrator ضمن التغييرات المعروضة.":"I approve granting Administrator in the reviewed changes.",
-"تأكيد وحفظ التغييرات":"Confirm and apply changes",
-"اكتملت التغييرات المجمعة.":"Grouped changes completed.",
-"توقفت العملية. راجع تقرير التغييرات قبل المتابعة.":"Execution stopped. Review the change report before continuing.",
-"افهم الوصول، قبل تعديل الصلاحيات":"Understand access before editing permissions",
-"اختر عضوًا أو مجموعة رتب، ثم اعرف ما يُسمح به داخل الغرفة ولماذا.":"Select a member or roles to see which actions are allowed in a channel and why.",
-"نوع المحاكاة":"Simulation mode",
-"عضو محدد":"Specific member",
-"مجموعة رتب":"Role combination",
-"الغرفة":"Channel",
-"رتب المحاكاة":"Simulated roles",
-"تُضم صلاحيات @everyone تلقائيًا. استثناءات عضو بعينه لا تُحسب في هذا الوضع.":"@everyone permissions are always included. Individual member overwrites are excluded in this mode.",
-"يُجلب هذا العضو فقط، دون تحميل قائمة الأعضاء كاملة.":"Only this member is fetched, without downloading the full member list.",
-"تحليل الصلاحيات":"Analyze permissions",
-"حساب لأذونات القناة الحالية. لا يشمل حالة الميكروفون أو قيود الجلسة الصوتية، ولا ينفّذ أي تعديل.":"Calculates current channel permissions. Microphone and voice session state are outside this analysis. No settings are changed.",
-"سبب كل سماح أو منع":"An explanation for every allow or deny",
-"تظهر النتيجة مع تسلسل مصادر الصلاحيات والاستثناءات.":"Results include the sequence of permission sources and overwrites.",
-"صلاحيات الجميع والرتب":"Base role permissions",
-"استثناءات @everyone":"@everyone overwrites",
-"استثناءات رتب العضو":"Combined role overwrites",
-"استثناءات العضو":"Member overwrites",
-"مالك السيرفر":"Server owner",
-"صلاحية Administrator":"Administrator permission",
-"تقييد العضو مؤقتًا":"Member timeout",
-"صلاحية أساسية مطلوبة":"Required prerequisite",
-"مالك السيرفر يتجاوز قيود الأذونات.":"The server owner bypasses permission restrictions.",
-"Administrator يتجاوز استثناءات القناة.":"Administrator bypasses channel overwrites.",
-"العضو مقيّد مؤقتًا؛ تبقى الرؤية وقراءة السجل بحسب أذونات القناة.":"The member is timed out; visibility and history still follow channel permissions.",
-"قراءة فقط":"Read only",
-"مسموح":"Allowed",
-"غير مسموح":"Denied",
-"سماح":"Allow",
-"منع":"Deny",
-"تفعيل":"Enable",
-"إيقاف":"Disable",
-"قابلة للمنشن":"Mentionable",
-"عرض منفصل":"Hoisted",
-"القسم":"Category",
-"الاسم":"Name",
-"اللون":"Color",
-"الوصف":"Description",
-"نوع الغرفة":"Channel type",
-"نعم":"Yes",
-"لا":"No",
-"غير متاح":"Unavailable",
-"مصادر السماح:":"Allowed by:",
-"مصادر المنع:":"Denied by:",
-"جارٍ حفظ المسودة…":"Saving draft…",
-"حُفظت المسودة تلقائيًا":"Draft saved automatically",
-"تعذّر الحفظ التلقائي":"Autosave failed",
-"خطة التغييرات المجمعة":"Grouped change plan",
-"معاينة التغييرات المجمعة":"Grouped change preview",
-"لقطة ما قبل التعديلات":"Snapshot before edits",
-"نتيجة التغييرات المجمعة":"Grouped change result",
-"تغيّرت المسودات في نافذة أخرى. احتفظ بنسختك قبل إعادة التحميل.":"Drafts changed in another window. Keep a copy before reloading.",
-"بيانات المسودات غير صالحة.":"Invalid draft data.",
-'تتغير الأسماء والنصوص الافتراضية فقط؛ تبقى تخصيصاتك محفوظة.':'Default names and text change; your customizations are preserved.',
-'تغيير لغة القالب يترجم الأسماء والنصوص الافتراضية. تبقى الأسماء والنصوص المخصصة كما كتبتها.':'Template language translates default names and text. Custom names and text stay as you wrote them.',
-'التراجع عن آخر حذف أو إعادة أو تغيير لغة القالب':'Undo the last deletion, reset or template language change',
-'يوجد اسم مكرر بعد الترجمة. عدّل الاسم المخصص المتطابق ثم حاول مجددًا.':'Translation would create duplicate names. Rename the conflicting custom item and try again.',
-'لغة القالب غير متاحة.':'Template language is unavailable.',
-'حمّل بيانات السيرفر أولًا لفتح التخصيص.':'Load the server first to open customization.',
-'اسحب من المقبض أو اضغطه لاختيار مكان النقل.':'Drag the handle or press it to choose a destination.',
-'سيرفر جديد · غير متصل':'New server · disconnected','السيرفر المحدد':'Selected server',
-"السيرفرات المحفوظة":"Saved servers",
-"اختر سيرفرًا محفوظًا أو أضف رقم سيرفر جديد.":"Choose a saved server or add a new server ID.",
-"إضافة سيرفر":"Add server",
-"ابحث في السيرفرات المحفوظة…":"Search saved servers…",
-"البحث في السيرفرات المحفوظة":"Search saved servers",
-"سيرفر محفوظ":"Saved server",
-"اختيار السيرفر":"Select server",
-"إزالة من القائمة":"Remove bookmark",
-"لا توجد نتائج مطابقة.":"No matching servers.",
-"سيرفراتك في مكان واحد":"Your servers, all together",
-"أدخل رقم السيرفر أدناه واحفظه. يظهر اسمه وصورته تلقائيًا بعد أول تحميل ناجح.":"Enter a server ID below and save it. Its name and icon appear after the first successful load.",
-"تستخدم هذه القائمة توكن البوت الحالي. اختيار السيرفر لا يبدأ الاتصال تلقائيًا.":"These servers use the current bot token. Selecting a server does not connect automatically.",
-"تخصيص السيرفر الحالي":"Customize current server",
-"حفظ السيرفر في القائمة":"Save server to list",
-"ستُحذف هذه البطاقة من الجهاز فقط. يبقى السيرفر وبياناته على Discord كما هي.":"Only this bookmark is removed from this device. The Discord server and its data stay unchanged.",
-"أدخل رقم السيرفر الصحيح أولًا.":"Enter a valid server ID first.",
-"تم حفظ السيرفر في القائمة.":"Server saved to your list.",
-"تمت إزالة البطاقة من الجهاز.":"Bookmark removed from this device.",
-"تم اختيار السيرفر. اضغط اتصال لتحميل بياناته.":"Server selected. Press Connect to load it.",
-"البوت متصل":"Bot online",
-"البوت غير متصل":"Bot offline",
-"جارٍ إيقاف البوت…":"Stopping bot…",
-"جارٍ تشغيل البوت…":"Starting bot…",
-"جارٍ إعادة اتصال البوت…":"Reconnecting bot…",
-"تعذّر اتصال البوت":"Bot connection failed",
-'مساحة الإدارة':'Workspace','اختر سيرفرك':'Choose your server','اربط البوت للبدء':'Connect your bot to get started',
-'إدارة المجتمع':'Community','أدوات البوت':'Bot tools','التنقل الرئيسي':'Main navigation','نظرة عامة':'Overview',
-'الأقسام والقنوات':'Categories & channels','الرتب والصلاحيات':'Roles & permissions','تصميم السيرفر':'Server redesign',
-'فحص الصلاحيات':'Permission check','سجل النشاط':'Activity log','إعدادات الاتصال':'Connection settings','جديد':'New',
-'يعمل محليًا على جهازك':'Runs locally on your device','معاينة توضيحية':'Demo preview','صُمّم لمجتمعك':'Made for your community',
-'جاهز للاتصال بالسيرفر':'Ready to connect','جارٍ تنفيذ العملية…':'Operation in progress…','تحتاج العملية إلى المراجعة':'Review required',
-'الخدمة المحلية غير متصلة':'Local service disconnected','إغلاق':'Close','إلغاء':'Cancel','متابعة':'Continue',
-'تحديث':'Refresh','إضافة مساحة':'Add space','إنشاء رتبة':'Create role','فحص الآن':'Check now','السجل':'Log',
-'سيرفر استثنائي يبدأ من هنا':'An exceptional server starts here','أهلًا بك في':'Welcome to',
-'قنواتك ورتبك الحالية أمامك. خصّص كل تفصيلة، راجع التغييرات، واجعل تجربة مجتمعك أفضل.':'Your channels and roles, all in one place. Customize the details, review changes and improve your community.',
-'لوحة احترافية لإدارة قنواتك، ترتيب رتبك، وتشغيل بوتك. كل شيء واضح، من المعاينة حتى التأكيد.':'Manage channels, organize roles and run your bot. Review every change before confirming.',
-'استكشف قنوات السيرفر':'Explore channels','ابدأ ربط السيرفر':'Connect your server','ربط السيرفر':'Connect server',
-'حماية القيادة مفعّلة دائمًا':'Leadership protection is always active','القنوات النصية':'Text channels','القنوات الصوتية':'Voice channels',
-'رتب المجتمع':'Community roles','حماية السيرفر':'Server protection','مفعّلة':'Active','آمنة':'Protected',
-'مساحات للعب والتواصل':'Spaces to play and connect','القيادة والتكاملات محفوظة':'Leadership and integrations preserved',
-'جاهزة للمحادثات':'Ready for conversation','تواصل بصوتك':'Connect by voice','صلاحيات لكل دور':'Permissions for every role','تأكيد قبل كل تعديل':'Confirm every change',
-'مساحات مجتمعك':'Community spaces','لمحة عن الأقسام والقنوات الموجودة':'Your current categories and channels','عرض الكل':'View all',
-'أضف بيانات الاتصال لعرض قنوات السيرفر الحقيقية.':'Connect to see your actual server channels.',
-'بيانات توضيحية للتصميم؛ غير متصلة بسيرفرك':'Demo data; not connected to your server','لا اتصال بديسكورد':'No Discord connection',
-'قنوات حقيقية من السيرفر المحدد':'Actual channels from the selected server','لا تُعرض بيانات سيرفر قبل الاتصال':'Connect to load server data',
-'حالة مساحة العمل':'Workspace activity','كل خطوة واضحة وتحت تحكمك':'Every step under your control',
-'تم تحميل بيانات السيرفر':'Server loaded','مساحة العمل جاهزة للاتصال':'Workspace ready to connect','الآن':'Now',
-'بيانات توضيحية · دون اتصال بديسكورد':'Demo data · No Discord connection','القنوات والرتب متاحة للعرض والتحرير':'Channels and roles ready to browse and edit',
-'أدخل التوكن ورقم السيرفر للبدء':'Enter your bot token and server ID to get started','حماية القيادة والتكاملات مفعّلة':'Leadership and integration protection active',
-'OWNER وCO_OWNER لا تتغيران':'OWNER and CO_OWNER remain unchanged','المعاينة تسبق التنفيذ دائمًا':'Preview before every action',
-'أي تعديل يحتاج مراجعتك وتأكيدك':'Changes require your review and confirmation','قناة المجتمع':'Community channel','لا توجد قنوات في السيرفر.':'No channels in this server.',
-'سيرفرك… في مكان واحد':'Your server, in one place',
-'اربط البوت بسيرفرك لعرض الأقسام والقنوات والرتب الحالية، ثم عدّل كل عنصر بمعاينة واضحة قبل الحفظ.':'Connect your bot to browse categories, channels and roles, then review each edit before saving.',
-'إعداد الاتصال':'Set up connection','رتب تعكس هوية مجتمعك':'Roles that reflect your community',
-'شاهد الرتب الحالية، خصّص ألوانها، واضبط الصلاحيات لكل دور.':'Browse roles, customize their colors and set permissions for each one.',
-'ابحث عن رتبة…':'Search roles…','ابحث عن قناة أو قسم…':'Search channels or categories…','البحث في الرتب':'Search roles','البحث في القنوات':'Search channels',
-'رتب السيرفر':'Server roles','هيكل السيرفر':'Server structure','قابلة للتعديل':'Editable',
-'لا توجد رتبة بهذا الاسم.':'No matching roles.','لا توجد قناة بهذا الاسم.':'No matching channels.',
-'اختر عنصرًا من القائمة':'Select an item','رتبة جديدة':'New role','مساحة جديدة':'New space','رتبة في السيرفر':'Server role',
-'قناة نصية':'Text channel','قناة صوتية':'Voice channel','قسم':'Category','قناة':'Channel',
-'محمية · للعرض فقط':'Protected · Read only','مسودة جديدة':'New draft','إعدادات العنصر':'Item settings',
-'تعذّرت العملية؛ راجع السبب قبل المحاولة مجددًا':'Operation failed; review the reason before retrying','تحديث بيانات السيرفر':'Refresh server data',
-'تفاصيل الرتبة':'Role details','صلاحيات الرتبة':'Role permissions','إعدادات القناة':'Channel settings','أذونات الوصول':'Access permissions',
-'رسائل البوت':'Bot messages','رسالة باسم البوت':'Message as bot','تمت معاينة التعديل':'Edit reviewed',
-'هذه البيانات للعرض فقط':'Read only','وضع العرض · الحفظ الحقيقي معطّل':'Demo mode · Saving disabled',
-'الخطة جاهزة. الحفظ يتطلب تأكيدك.':'Plan ready. Confirm to save.','مسودة محلية · راجع التعديل قبل الحفظ':'Local draft · Review before saving',
-'معاينة التعديل':'Review edit','حفظ التغيير':'Save changes','اسم القناة':'Channel name','اسم القسم':'Category name','اسم الرتبة':'Role name',
-'اختر اسمًا واضحًا. يمكنك تخصيص الإيموجي من زر مكتبة الإيموجي.':'Choose a clear name. Use the emoji library to customize it.',
-'اسم مميز مع إيموجي يجعل أعضاء مجتمعك يتعرفون على دورهم بسرعة.':'A distinctive name and emoji help members recognize the role.',
-'القسم الرئيسي':'Parent category','بدون قسم':'No category','نقل القناة يحافظ على أذوناتها الحالية.':'Moving the channel preserves its current permissions.',
-'وصف القناة':'Channel topic','اختياري':'Optional','ماذا يحدث في هذه المساحة؟':'What happens in this space?',
-'تهدئة الرسائل (ثانية)':'Slowmode (seconds)','0 لتعطيل وضع التهدئة. الحد الأقصى 21600.':'0 disables slowmode. Maximum: 21600.',
-'الحد الأقصى للأعضاء':'User limit','0 يسمح بعدد غير محدود. الحد الأقصى 99.':'0 means unlimited. Maximum: 99.',
-'التعديل يبدأ بمعاينة':'Review first','لن يتغير أي شيء في السيرفر حتى تراجع التفاصيل وتؤكد الحفظ.':'Nothing changes on the server until you review the details and confirm.',
-'لون الرتبة':'Role color','اختيار لون الرتبة':'Choose role color','لون الرتبة HEX':'Role color HEX',
-'يظهر هذا اللون على أسماء الأعضاء في ديسكورد.':'This color appears on members’ names in Discord.',
-'طريقة الظهور':'Display','عرض الرتبة بشكل منفصل':'Display role separately','تجميع أعضائها في قائمة الأعضاء':'Group members in the member list',
-'السماح بمنشن الرتبة':'Allow role mentions','يمكن للجميع الإشارة إلى هذه الرتبة':'Everyone can mention this role',
-'الصلاحيات تتطبق على جميع أعضاء الرتبة. يتم حفظ الصلاحيات الأخرى وتوزيع الأعضاء كما هما.':'Permissions apply to all role members. Other permissions and member assignments are preserved.',
-'حدّد رتبة واضبط وصولها لهذه القناة. أذونات الأعضاء والقيادة والتكاملات تبقى محفوظة.':'Select a role and set its channel access. Member, leadership and integration overwrites are preserved.',
-'الرتبة المراد ضبط وصولها':'Role to configure','لا توجد رتب متاحة للتحرير.':'No editable roles available.',
-'وراثة':'Inherit','سماح ✓':'Allow ✓','منع ×':'Deny ×',
-'عرض القنوات':'View channels','إرسال الرسائل':'Send messages','قراءة سجل الرسائل':'Read message history','إضافة تفاعلات':'Add reactions',
-'تضمين الروابط':'Embed links','إرفاق الملفات':'Attach files','دخول القنوات الصوتية':'Connect to voice','التحدث صوتيًا':'Speak',
-'نقل الأعضاء صوتيًا':'Move members','إدارة الرسائل':'Manage messages','إدارة القنوات':'Manage channels','إدارة الرتب':'Manage roles',
-'إدارة السيرفر':'Manage server','عرض سجل التدقيق':'View audit log','مدير كامل':'Administrator','طرد الأعضاء':'Kick members',
-'حظر الأعضاء':'Ban members','إسكات الأعضاء مؤقتًا':'Timeout members','إدارة الأسماء المستعارة':'Manage nicknames',
-'تغيير الاسم المستعار':'Change nickname','منشن الجميع':'Mention everyone','إنشاء دعوة':'Create invite','إدارة Webhooks':'Manage webhooks',
-'إدارة المواضيع':'Manage threads','إنشاء مواضيع عامة':'Create public threads','إنشاء مواضيع خاصة':'Create private threads',
-'إرسال رسائل في المواضيع':'Send messages in threads','إدارة الفعاليات':'Manage events','إنشاء فعاليات':'Create events',
-'إدارة التعبيرات':'Manage expressions','إيموجي خارجية':'Use external emoji','ملصقات خارجية':'Use external stickers',
-'كتم الأعضاء صوتيًا':'Mute members','إسكات الصوت للأعضاء':'Deafen members','بث مباشر':'Stream','استخدام النشاط الصوتي':'Use voice activity',
-'أولوية التحدث':'Priority speaker','طلب التحدث':'Request to speak','استخدام أوامر التطبيقات':'Use application commands','إرسال رسائل صوتية':'Send voice messages',
-'يلزم رفع رتبة البوت في Discord':'Move the bot role higher in Discord','هذه الرتبة محفوظة':'This role is protected','هذا العنصر محفوظ':'This item is protected',
-'رتب القيادة محفوظة دائمًا، ولا يمكن تعديل صلاحياتها أو أعضائها أو ترتيبها من البرنامج.':'Leadership roles are permanently protected. Their permissions, members and position cannot be changed by this app.',
-'رتبة الجميع محفوظة وفق سياسة هذا المشروع.':'The @everyone role is preserved by this project.',
-'هذه رتبة يديرها Discord أو أحد التكاملات؛ تُدار من إعدادات التكامل نفسه.':'Discord or an integration manages this role. Use that integration’s settings.',
-'هذه رتبة يحملها البوت؛ لا يعدّل البرنامج رتبه الخاصة.':'The bot has this role. The app does not edit its own roles.',
-'Discord يمنع البوت من تعديل رتبة أعلى من أعلى رتبة يحملها أو مساوية لها، حتى مع Administrator.':'Discord blocks edits to roles at or above the bot’s highest role, even with Administrator.',
-'من Discord افتح':'In Discord, open','إعدادات السيرفر ← الرتب':'Server Settings → Roles','، ثم ارفع رتبة البوت':'and move the bot role',
-'فوق الرتب التي تريد إدارتها، مع بقائها أسفل OWNER وCO_OWNER. لا تحرّك رتب القيادة.':'above roles you want to manage, keeping it below OWNER and CO_OWNER. Leave leadership roles in place.',
-'بعد ذلك اضغط تحديث لتفعيل الصلاحيات المتاحة.':'Then refresh to load the available permissions.','تحديث صلاحية إدارة الرتبة':'Refresh role access',
-'إعداد الاتصال بالسيرفر':'Server connection','احفظ بيانات الاتصال على جهازك بتشفير حساب ويندوز، أو استخدمها لهذه الجلسة فقط.':'Save connection details encrypted for your Windows account, or use them for this session only.',
-'هذه معاينة توضيحية للواجهة':'This is a UI demo','لا يوجد اتصال بديسكورد، ولا تُنفّذ عمليات على أي سيرفر.':'No Discord connection or server operations.',
-'توكن البوت':'Bot token','رقم السيرفر':'Server ID','إظهار أو إخفاء التوكن':'Show or hide token',
-'التوكن محفوظ بتشفير ويندوز؛ اتركه فارغًا لاستخدامه':'Token encrypted with Windows; leave blank to use it',
-'التوكن متاح في ذاكرة الجلسة الحالية':'Token available in session memory','أدخل توكن البوت من Discord Developer Portal':'Enter your bot token from the Discord Developer Portal',
-'لا تشارك التوكن مع أي شخص. لا يُحفظ في التخزين المحلي للمتصفح.':'Keep your token private. It is not stored in browser local storage.',
-'لتغييره: انسخ رقم السيرفر من ديسكورد بعد تفعيل وضع المطوّر.':'Copy the server ID from Discord with Developer Mode enabled.',
-'حفظ بيانات الاتصال':'Save connection details','حذف البيانات المحفوظة':'Forget saved details',
-'التعديلات الحالية غير محفوظة':'Current changes are not saved','محفوظة على هذا الجهاز بتشفير ويندوز':'Saved on this device with Windows encryption',
-'الحفظ اختياري · الاتصال يبدأ بضغطك فقط':'Saving is optional · Connect when you choose',
-'جارٍ تحميل السيرفر…':'Loading server…','اتصال وتشغيل البوت':'Connect & start bot','إيقاف الاتصال':'Disconnect',
-'جارٍ العمل…':'Working…','● البوت متصل والسيرفر جاهز':'● Bot online and server ready','جارٍ الاتصال بالبوت…':'Connecting to bot…',
-'مدة تشغيل البوت':'Bot uptime',
-'أعضاء السيرفر':'Server members','عدد تقريبي من Discord':'Approximate count from Discord','إجمالي الأعضاء، بما فيهم البوتات':'Total members, including bots',
-'تخصيص السيرفر':'Server profile','هوية سيرفرك، بطابعك':'Your server, your identity',
-'أدوات الإدارة':'Management tools',
-'مصمّم هيكلة السيرفر':'Server layout designer','خصّص القالب قبل المعاينة. لا يتغير السيرفر أثناء التحرير.':'Customize the blueprint before previewing. Editing does not change the server.',
-'مسودة غير محفوظة':'Unsaved draft','مسودة محلية':'Local draft','لغة القالب':'Template language','تطبيق قالب جاهز':'Apply preset',
-'إعادة القالب من البداية':'Reset blueprint','تراجع':'Undo','حذف من القالب':'Delete from blueprint',
-'حذف القسم وغرفه من المسودة':'Remove category and its channels from the draft',
-'استعادة جميع الأقسام والغرف والرتب حسب اللغة المختارة؛ يمكنك التراجع.':'Restore all categories, channels and roles in the selected language. You can undo this.',
-'التراجع عن آخر حذف أو إعادة للقالب':'Undo the last deletion or blueprint reset',
-'معاينة الرتبة':'Role preview','خصّص هويتها، ثم حدّد ما يمكن لأعضائها فعله.':'Shape its identity, then choose what its members can do.',
-'إعدادات رتبة القالب':'Blueprint role editor','الهوية والمظهر':'Identity & appearance','الصلاحيات':'Permissions','اسم الرتبة':'Role name',
-'اسم واضح يعكس دور الرتبة في مجتمعك.':'A clear name that reflects its role in your community.',
-'اختيار لون الرتبة':'Choose role color','رمز لون الرتبة':'Role color code','ألوان مقترحة':'Suggested colors',
-'استخدم رمز لون صحيحًا مثل #5865F2.':'Use a valid color code such as #5865F2.',
-'تمييز أعضائها في قائمة أعضاء السيرفر.':'Show its members separately in the server member list.',
-'السماح للأعضاء بالإشارة إلى هذه الرتبة.':'Let members mention this role.',
-'هذه معاينة محلية؛ راجع القالب كاملًا قبل التنفيذ.':'This is a local preview. Review the full blueprint before executing.',
-'ابحث عن صلاحية…':'Search permissions…','البحث في صلاحيات القالب':'Search blueprint permissions','المفعّلة فقط':'Enabled only',
-'الوصول والتفاعل':'Access & interaction','المحادثات والمحتوى':'Chat & content','الغرف الصوتية':'Voice channels','إدارة الأعضاء':'Member management',
-'صلاحية حساسة':'Sensitive permission','Administrator يتجاوز قيود القنوات ويمنح إدارة كاملة.':'Administrator bypasses channel restrictions and grants full access.',
-'لا توجد صلاحيات تطابق البحث.':'No permissions match your search.',
-'نقل العنصر':'Move item','نقل وترتيب العنصر':'Move & reorder item','اختر وجهته وراجع النقل قبل تأكيد حفظه في Discord.':'Choose its destination and review the move before confirming it in Discord.',
-'العنصر المحدد':'Selected item','وجهة النقل':'Move destination','مكان العنصر':'Placement','داخل القسم':'Inside category','قبل العنصر':'Before item','بعد العنصر':'After item',
-'النقل مستقل عن تعديلات الحقول غير المحفوظة.':'Moving is separate from unsaved field edits.','معاينة النقل':'Preview move','جارٍ معاينة النقل…':'Previewing move…','تأكيد النقل':'Confirm move',
-'وضع العرض التوضيحي: يمكن مراجعة النقل فقط.':'Demo mode: moves can only be previewed.',
-'تم حفظ النقل. جارٍ تحديث ترتيب السيرفر.':'Move saved. Refreshing the server order.',
-'اسحب من المقبض أو استخدم زر النقل.':'Drag the handle or use the move button.',
-'امسح البحث لتغيير ترتيب العناصر.':'Clear the search to reorder items.',
-'معاينة نقل؛ التأكيد مطلوب للحفظ.':'Move preview; confirmation is required to save.',
-'القسم محمي؛ النقل معطّل':'Category protected; moving is disabled',
-'إعدادات رتبة السيرفر':'Server role editor','خصّص رتبة السيرفر الحالية؛ التغييرات تُراجع قبل الحفظ.':'Customize this server role. Changes are reviewed before saving.',
-'مسودة محلية؛ راجع التعديل وأكّد الحفظ لتطبيقه على السيرفر.':'Local draft. Review and confirm to apply changes to the server.',
-'البوت لا يستطيع منح هذه الصلاحية':'The bot cannot grant this permission',
-'البحث في صلاحيات الرتبة':'Search role permissions',
-'استيراد JSON':'Import JSON','تصدير القالب':'Export blueprint','حفظ المسودة':'Save draft','أقسام تخصيص القالب':'Blueprint sections',
-'الأقسام والغرف':'Categories & channels','رتب القالب':'Blueprint roles','نقل أعضاء الرتب':'Role migrations',
-'+ إضافة رتبة':'+ Add role','+ إضافة قسم':'+ Add category','+ إضافة غرفة':'+ Add channel',
-'الترتيب لتسلسل الإنشاء؛ الرتب الحالية تحتفظ بترتيبها.':'Ordering controls creation sequence; existing role positions are preserved.',
-'معاينة هذا القالب':'Preview this blueprint','إعداد رتبة القالب':'Blueprint role settings','إعداد غرفة القالب':'Blueprint channel settings','إعداد قسم القالب':'Blueprint category settings',
-'نقل لأعلى':'Move up','نقل لأسفل':'Move down','إزالة من القالب':'Remove from blueprint','صلاحيات الرتبة الجديدة':'New role permissions',
-'Administrator يمنح إدارة كاملة؛ راجع الصلاحيات قبل التنفيذ.':'Administrator grants full access. Review permissions before executing.',
-'نوع الغرفة':'Channel type','نصية':'Text','صوتية':'Voice','رسالة افتتاحية اختيارية':'Optional opening message',
-'الرسالة الافتتاحية تُنشر فقط عند إنشاء غرفة جديدة أثناء إعادة البناء.':'Opening messages are posted only in newly created channels during rebuild.',
-'قراءة فقط':'Read only','رتب يُسمح لها بالكتابة':'Roles allowed to post','غرفة خاصة لرتب محددة':'Private channel for selected roles',
-'رتب الوصول إلى الغرفة':'Channel access roles','تتبع الغرفة وصول القسم الرئيسي.':'This channel follows its category access.',
-'وصول القسم':'Category access','عام':'Public','خاص برتب محددة':'Private to selected roles','رتب الوصول إلى القسم':'Category access roles',
-'اختر عنصرًا أو أضف عنصرًا جديدًا.':'Select an item or add a new one.','نقل أعضاء الرتب القديمة':'Migrate existing role assignments',
-'الربط اختياري وصريح. الرتب الموزعة دون ربط تبقى محفوظة. راجع صلاحيات الرتبة المستهدفة قبل نقل الأعضاء.':'Mappings are optional and explicit. Assigned roles without a mapping are preserved. Review target permissions before migration.',
-'حمّل السيرفر لعرض الرتب القديمة القابلة للنقل.':'Load the server to see eligible source roles.','جارٍ تحميل قالب الهيكلة…':'Loading layout blueprint…',
-'إعادة المحاولة':'Retry','انتظر تحميل قالب الهيكلة أولًا.':'Wait for the blueprint to load.','قالب الهيكلة المعتمَد':'Reviewed layout blueprint',
-'استبدال مسودة القالب؟ لن يتغير السيرفر.':'Replace the draft blueprint? The server will not change.',
-'إزالة هذا العنصر من مسودة القالب فقط؟ لن يُحذف شيء من السيرفر الآن.':'Remove this item from the draft blueprint? Nothing will be deleted from the server now.',
-'منح الرتبة لعضو':'Grant role to member','معرّف العضو · User ID':'Member ID · User ID','أدخل معرّف العضو من Discord':'Enter a Discord user ID',
-'فعّل وضع المطوّر في Discord، ثم اضغط على العضو واختر نسخ معرّف المستخدم.':'Enable Developer Mode in Discord, then right-click the member and choose Copy User ID.',
-'العضو المستهدف':'Target member','تُضاف هذه الرتبة فقط. تبقى رتب العضو الحالية محفوظة.':'Only this role is added. Existing roles are preserved.',
-'سيتم منح الرتبة بصلاحياتها الحالية المحفوظة في Discord.':'The role will be granted with its currently saved Discord permissions.',
-'هذه الرتبة تمنح Administrator':'This role grants Administrator','سيحصل العضو على صلاحيات إدارة كاملة في السيرفر.':'The member will receive full Administrator permissions in this server.',
-'أوافق على منح صلاحية Administrator لهذا العضو المحدد.':'I approve granting Administrator to this specific member.',
-'جارٍ التحقق من العضو…':'Checking member…','معاينة منح الرتبة':'Preview role grant','تأكيد منح الرتبة':'Confirm role grant',
-'أدخل معرّف عضو صحيحًا من السيرفر.':'Enter a valid user ID from this server.','تم منح الرتبة للعضو المحدد.':'Role granted to the selected member.',
-'خطة منح الرتبة':'Role grant plan','نتيجة منح الرتبة':'Role grant result','الرتبة:':'Role:',
-'هذا العضو يمتلك الرتبة بالفعل.':'This member already has the role.','العضو غير موجود في السيرفر المحدد.':'Member not found in this server.',
-'هذه الرتبة محمية أو أعلى من البوت ولا يمكن منحها من البرنامج.':'This role is protected or above the bot and cannot be granted by the app.',
-'اعرض صورة السيرفر الحالية وراجع تغيير اسمه قبل الحفظ.':'View the server’s current icon and review a new name before saving.',
-'صورة السيرفر من Discord':'Server icon from Discord','اسم السيرفر':'Server name',
-'صورة بديلة من أحرف الاسم':'Initials shown when no icon is available',
-'من حرفين إلى 100 حرف. الاسم الجديد يظهر لكل أعضاء السيرفر بعد التأكيد.':'2–100 characters. All members will see the new name after confirmation.',
-'ستراجع الاسم الحالي والجديد قبل تأكيد الحفظ.':'Review the current and new name before confirming.',
-'تغيير اسم السيرفر يحتاج صلاحية Manage Server للبوت.':'The bot needs Manage Server to change the server name.',
-'اسم السيرفر يجب أن يكون من حرفين إلى 100 حرف.':'The server name must be 2–100 characters.',
-'العدد غير متاح حاليًا':'Count currently unavailable','أعضاء هذه الرتبة':'Members with this role','عدد أعضاء الرتبة':'Role member count','حسب آخر تحديث':'As of last refresh',
-'يمكن للعضو امتلاك أكثر من رتبة؛ لا تجمع أعداد الرتب لحساب إجمالي الأعضاء.':'Members can hold multiple roles; role counts cannot be added to calculate the server total.',
-'تعذّر جلب أعداد أعضاء الرتب. يمكنك متابعة التعديل وتحديث البيانات لاحقًا.':'Role member counts could not be loaded. You can continue editing and refresh later.',
-'تحميل السيرفر وتشغيل الحضور بخطوة واحدة':'Load the server and start bot presence in one step',
-'اتصال محلي':'Local connection','بياناتك لا تمر بخادم خارجي للتطبيق.':'Your data does not pass through an external app server.',
-'حماية ثابتة':'Built-in protection','رتب القيادة والتكاملات محفوظة.':'Leadership and integration roles are preserved.',
-'مراجعة قبل التنفيذ':'Review before execution','التحميل والفحص لا يغيّران السيرفر.':'Loading and checks do not change the server.',
-'صلاحيات البوت، أمامك بوضوح':'Your bot’s permissions, clearly explained',
-'اعرف ما يستطيع البوت إدارته، وما يحتاج تعديلًا من إعدادات السيرفر.':'See what the bot can manage and what needs updating in Discord settings.',
-'تُقرأ الصلاحيات من ديسكورد. رفع رتبة البوت أو تعديل صلاحياته يتم من إعدادات السيرفر.':'Permissions are read from Discord. Change the bot’s role position or permissions in Server Settings.',
-'صلاحيات الوصول والإدارة':'Access & management permissions','متاحة':'Granted','غير ممنوحة':'Not granted','قنوات لا يستطيع البوت إدارتها':'Channels the bot cannot manage',
-'نوع الرسالة':'Message format','نص عادي':'Plain text','بطاقات مصمّمة · Embed JSON':'Designed cards · Embed JSON',
-'قالب قوانين عربي / English':'Arabic / English rules template','نص الرسالة / التعليق':'Message / comment','كود تصميم الرسالة · JSON':'Message design · JSON',
-'ستظهر باسم البوت بعد المعاينة والتأكيد.':'Sent as the bot after review and confirmation.',
-'عدّل نصوص القالب داخل علامات الاقتباس. color رقم اللون؛ fields فقرات القوانين. الكود يتحوّل إلى بطاقات عند المعاينة، ولا يُنشر كنص كود.':'Edit the quoted text. color is a numeric color; fields are rule sections. Preview converts JSON into cards; the code itself is not posted.',
-'أضف قالب القوانين أو أدخل كود البطاقات…':'Load the rules template or enter card JSON…','اكتب الرسالة التي تريد نشرها…':'Write your message…',
-'حتى 10 بطاقات ومجموع 6000 حرف في نصوصها.':'Up to 10 cards and 6,000 characters in total.',
-'المنشن التلقائي معطّل.':'Automatic mentions are disabled.','المنشن التلقائي للأعضاء والرتب و@everyone معطّل.':'Automatic user, role and @everyone mentions are disabled.',
-'معاينة تقريبية؛ الخط والمسافات قد تختلف في Discord.':'Approximate preview; fonts and spacing may differ in Discord.',
-'معاينة الرسالة':'Preview message','إرسال باسم البوت':'Send as bot','تأكيد إرسال الرسالة':'Confirm message','تأكيد الإرسال':'Confirm send',
-'ستظهر باسم البوت. الإشارات التلقائية معطّلة.':'Sent as the bot. Automatic mentions are disabled.',
-'تم إرسال الرسالة بنجاح.':'Message sent successfully.','تم إرسال الرسالة باسم البوت.':'Message sent as the bot.',
-'لم يتأكد الإرسال. راجع الغرفة قبل إعداد رسالة أخرى.':'Delivery is unconfirmed. Check the channel before preparing another message.',
-'وضع العرض التوضيحي: الإرسال الحقيقي معطّل.':'Demo mode: sending is disabled.',
-'استبدال كود التصميم؟':'Replace design code?','سيُستبدل كود المسودة بقالب القوانين. لن تُرسل أي رسالة.':'Replace the draft code with the rules template. No message will be sent.',
-'استخدام القالب':'Use template','اكتب الرسالة أولًا.':'Write a message first.','صيغة JSON غير صحيحة؛ راجع الفواصل وعلامات الاقتباس.':'Invalid JSON. Check commas and quotation marks.',
-'مكتبة الإيموجي':'Emoji library','اختر من المكتبة أو أضف إيموجي من عندك':'Browse the library or paste your own emoji',
-'لمسة تعبّر عن مجتمعك':'A touch of personality','مكتبة إيموجي لأسماء الغرف والأقسام والرتب':'Emoji for channel, category and role names',
-'البحث في مكتبة الإيموجي':'Search emoji library','ابحث بالعربي أو English…':'Search in Arabic or English…',
-'تصنيفات الإيموجي':'Emoji categories','اختيار إيموجي':'Choose emoji','الكل':'All','الألعاب':'Gaming','المجتمع':'Community','الإدارة':'Staff',
-'لمسات مميزة':'Highlights','إضافاتي':'My additions','إيموجي من عندك':'Your own emoji','اختيار':'Select',
-'الصق إيموجي هنا مثل 🐉':'Paste an emoji, e.g. 🐉',
-'للأسماء استخدم إيموجي Unicode. صور وإيموجيات Discord المخصصة لا تظهر كصور داخل اسم القناة؛ يمكن استخدامها في الرسائل.':'Use Unicode emoji for names. Custom Discord emoji images do not render inside channel names; use them in messages.',
-'معاينة الاسم':'Name preview','استخدام الإيموجي':'Use emoji',
-'الإيموجيات التي تضيفها تظهر هنا طوال الجلسة.':'Your added emoji appear here for this session.',
-'لا توجد نتائج. جرّب كلمة أخرى أو الصق إيموجي من عندك.':'No results. Try another word or paste your own emoji.',
-'الصق إيموجي واحدًا؛ الصور وأكواد مثل <:name:id> غير مدعومة في الأسماء.':'Paste one Unicode emoji. Images and codes such as <:name:id> are not supported in names.',
-'جاهز للاستخدام. سيظهر ضمن «إضافاتي» طوال هذه الجلسة.':'Ready to use. It will appear in My additions for this session.',
-'أضف مساحة لمجتمعك':'Add a community space','اختر نوع المساحة. ستراجع إعداداتها قبل إنشائها في السيرفر.':'Choose a space type. Review its settings before creating it.',
-'نوع المساحة':'Space type','💬 قناة نصية':'💬 Text channel','🎙️ قناة صوتية':'🎙️ Voice channel','📁 قسم للقنوات':'📁 Channel category',
-'تأكيد حفظ التعديل':'Confirm changes','سيُحفظ هذا التغيير في':'This change will be saved in',
-'راجع التفاصيل قبل المتابعة.':'Review the details before continuing.','العودة للمراجعة':'Back to review','تأكيد وحفظ':'Confirm & save',
-'امنح مجتمعك بداية أجمل':'Give your community a fresh start',
-'تصميم ألعاب عربي منظّم، مع مراجعة كاملة لكل ما سيُنشأ وما سيُحفظ وما سيُزال.':'An organized Arabic gaming layout, with a full review of everything created, preserved or removed.',
-'مسار إعادة التصميم':'Redesign workflow','ثلاث خطوات واضحة، وتأكيد قبل أي حذف':'Three clear steps, confirmation before deletion',
-'ابدأ من السيرفر الحالي':'Start with your current server','حمّل القنوات والرتب وافحص صلاحيات البوت قبل إنشاء أي خطة.':'Load channels and roles and check bot permissions before planning.',
-'أنشئ الخطة وراجع التفاصيل':'Create and review the plan',
-'معاينة منفصلة تعرض الإنشاء والتحديث والحذف، مع الرتب والقنوات المحفوظة وتوزيع الأعضاء.':'A separate preview shows creations, updates, deletions, preserved items and role assignments.',
-'إنشاء معاينة كاملة':'Create full preview','نفّذ بعد موافقتك الصريحة':'Run after explicit confirmation',
-'يُنشأ الجديد أولًا. لا يبدأ حذف القديم إلا بعد التحقق من الخطة وتأكيد رقم السيرفر وعبارة الحذف.':'New items are created first. Cleanup requires a verified plan, the server ID and the deletion phrase.',
-'مراجعة تأكيد التنفيذ':'Review execution confirmation','تصميم احترافي. أساس آمن.':'Professional design. Safe foundations.',
-'قواعد ثابتة ترافق كل خطة':'Safeguards for every plan','★ OWNER ★ و★ CO_OWNER ★ محفوظتان بالصلاحيات والترتيب والأعضاء.':'★ OWNER ★ and ★ CO_OWNER ★ keep their permissions, position and members.',
-'@everyone ورتب البوتات والتكاملات لا تُحذف.':'@everyone, bot and integration roles are preserved.',
-'قنوات Community المحمية مثل rules وmoderator-only محفوظة.':'Protected Community channels such as rules and moderator-only are preserved.',
-'الرتب الموزعة تُحفظ عندما لا يوجد نقل آمن لتوزيعها.':'Assigned roles are kept when assignments cannot be safely migrated.',
-'لا طرد، لا حظر، ولا حذف للسيرفر.':'No kicks, bans or server deletion.',
-'تنفيذ تدريجي يحترم حدود Discord API ويمنع التكرار.':'Sequential execution respects Discord API limits and prevents duplicates.',
-'الخطة تُبنى على حالة السيرفر الحالية. أي تغيّر مؤثر يستلزم معاينة جديدة.':'Plans use the current server configuration. Relevant changes require a fresh preview.',
-'تقرير الخطة المقترحة':'Proposed plan report','راجع جميع التفاصيل قبل إتاحة زر التنفيذ':'Review all details before enabling execution','تنزيل التقرير':'Download report',
-'راجعت تقرير الإنشاء والحذف والرتب المحفوظة، وأرغب في فتح خطوة التأكيد الإضافي.':'I reviewed the creation, deletion and preservation report and want to open the final confirmation.',
-'تأكيد إعادة بناء السيرفر':'Confirm server rebuild','تأكيد وتنفيذ إعادة البناء':'Confirm & rebuild',
-'ستُنشأ عناصر التصميم الجديد أولًا، ثم تُزال العناصر القديمة المسموح بحذفها حسب الخطة. قد يُفقد محتوى القنوات المحذوفة. لا تنفّذ إلا بعد مراجعة التقرير.':'New design items are created first, then eligible old items are removed according to the plan. Deleted channel content may be lost. Review the report before proceeding.',
-'اكتب العبارة التالية كما هي':'Type the following phrase exactly','عبارة التأكيد':'Confirmation phrase','تأكيد وبدء التنفيذ':'Confirm & execute',
-'تحتاج منح صلاحيات البوت؟':'Need to grant bot permissions?','فتح دعوة الصلاحيات المطلوبة':'Open required-permissions invite',
-'دعوة Administrator…':'Administrator invite…','دعوة بصلاحية Administrator':'Invite with Administrator',
-'تمنح هذه الدعوة البوت صلاحية إدارة كاملة في السيرفر. استخدمها فقط إذا كنت تريد ذلك. يمكنك منح الصلاحيات المطلوبة من الدعوة العادية.':'This invite grants the bot full Administrator permission. Use it only if intended. The regular invite grants the required permissions.',
-'سيفتح رابط ديسكورد الرسمي؛ راجع صفحة الموافقة هناك.':'An official Discord link will open. Review the authorization page there.',
-'فتح الدعوة الرسمية':'Open official invite','استكشف التصميم بأمان':'Explore the design safely',
-'هذه بيانات توضيحية فقط. يمكنك حفظ القالب محليًا ومعاينة التقارير؛ تغييرات Discord وإعادة البناء الفعلي معطّلة.':'This is demo data. You can save blueprints locally and preview reports; Discord changes and live rebuilding are disabled.',
-'بيانات توضيحية للتصميم؛ غير متصلة بسيرفرك · لا اتصال بديسكورد':'Demo data; not connected to your server · No Discord connection',
-'تم إنشاء الخطة. افتح التقرير لمراجعة التفاصيل.':'Plan created. Open the report to review details.',
-'تعذّر تنزيل التقرير. قد لا يكون متاحًا في هذه الجلسة.':'Could not download the report. It may not be available in this session.',
-'اكتب رقم السيرفر المحدد للتأكيد':'Enter the selected server ID to confirm','اكتب عبارة التأكيد التالية حرفيًا:':'Type the following confirmation phrase exactly:',
-'كل خطوة لها سجل':'Every step recorded','تابع عمليات الاتصال والفحص والمراجعة والتنفيذ من مكان واحد.':'Track connections, checks, reviews and execution in one place.',
-'تنزيل السجل':'Download log','سجل مساحة العمل':'Workspace log','سجل محلي لعمليات هذه الجلسة':'Local activity for this session',
-'مساحة جديدة، وسجل واضح':'A fresh workspace, a clear record','ستظهر هنا عمليات هذه الجلسة بمجرد اتصالك بالسيرفر.':'Session activity will appear here after connecting.',
-'ملفات التقارير والنسخ المحلية':'Reports & local backups','تنزيل التفاصيل الكاملة للخطط والعمليات في هذه الجلسة':'Download full plans and operation details for this session',
-'تنزيل':'Download','ستظهر هنا ملفات المعاينة ونتائج التنفيذ عندما تُنشأ.':'Preview files and execution results will appear here when created.',
-'معاينة رسالة البوت':'Bot message preview','خطة إرسال الرسالة':'Message plan','نتيجة إرسال الرسالة':'Message result','سبب تعارض الحفظ مع المعاينة':'Edit conflict details',
-'تقرير معاينة إعادة البناء':'Rebuild preview report','خطة الإنشاء والحذف الكاملة':'Full creation & deletion plan','بيانات اعتماد الخطة':'Plan approval',
-'نسخة حالة السيرفر قبل التنفيذ':'Server configuration backup','نتيجة إعادة البناء':'Rebuild result','سجل خطوات التنفيذ':'Execution log',
-'تفاصيل العملية غير المكتملة':'Incomplete operation details','تقرير مراجعة التعديل':'Edit review','خطة التعديل الكاملة':'Full edit plan',
-'حالة السيرفر قبل التعديل':'Configuration before edit','نتيجة حفظ التعديل':'Edit result',
-'تم تحديث بيانات العرض التوضيحي.':'Demo data refreshed.','تم تحديث بيانات السيرفر بنجاح.':'Server data refreshed.',
-'تم حفظ التوكن ورقم السيرفر بتشفير ويندوز.':'Token and server ID saved with Windows encryption.',
-'تم حذف البيانات المحفوظة. بيانات الجلسة تبقى حتى إغلاق البرنامج.':'Saved details removed. Session credentials remain until the app closes.',
-'تم حفظ التعديل. جارٍ تحديث بيانات السيرفر.':'Changes saved. Refreshing server data.',
-'تم تحديث العنصر من السيرفر. راجع القيم الحالية.':'Item refreshed from the server. Review its current values.',
-'توجد تقارير جديدة جاهزة للتنزيل في سجل النشاط.':'New reports are available in the activity log.',
-'تعذّر الاتصال بالخدمة المحلية. افتح CortexManager.exe مجددًا.':'Cannot connect to the local service. Reopen CortexManager.exe.',
-'تعذّرت العملية.':'Operation failed.','أدخل اسم العنصر أولًا.':'Enter a name first.','الاسم يجب ألا يتجاوز 100 حرف.':'Names must be 100 characters or fewer.',
-'الاسم مع الإيموجي يتجاوز 100 حرف. اختصر الاسم أولًا.':'The name with emoji exceeds 100 characters. Shorten it first.',
-'أدخل لونًا صحيحًا مثل #9888FF.':'Enter a valid color, e.g. #9888FF.',
-'حد الأعضاء يجب أن يكون بين 0 و99.':'The user limit must be from 0 to 99.','التهدئة يجب أن تكون بين 0 و21600 ثانية.':'Slowmode must be from 0 to 21600 seconds.',
-'اختر الغرفة المراد النشر فيها.':'Choose the destination channel.','اكتب رسالة من 1 إلى 2000 حرف أو أضف بطاقة Embed.':'Write 1–2000 characters or add an embed.',
-'يحتاج البوت صلاحيتَي عرض القناة وإرسال الرسائل داخل هذه الغرفة.':'The bot needs View Channel and Send Messages in this channel.',
-'يحتاج البوت صلاحية الاتصال بهذه الغرفة الصوتية.':'The bot needs Connect in this voice channel.',
-'يحتاج البوت صلاحية تضمين الروابط (Embed Links) لنشر البطاقات في هذه الغرفة.':'The bot needs Embed Links to post cards in this channel.',
-'الاسم':'Name','الغرفة':'Channel','السيرفر':'Server','البوت':'Bot',
-};
-const patterns = [
- [/^(\d+) تعديل$/u,(_,n)=>`${n} edits`],
- [/^مكتمل: (\d+) · متبقٍ: (\d+)$/u,(_,done,left)=>`Completed: ${done} · Remaining: ${left}`],
- [/^تتأثر صلاحيات حاملي هذه الرتبة؛ عددهم حسب آخر تحديث:$/u,()=> 'These permissions affect role holders; count at last refresh:'],
- [/^\. توزيع الرتب يبقى كما هو\.$/u,()=> '. Role assignments stay unchanged.'],
- [/^عضو تجريبي: (\d+)$/u,(_,id)=>`Demo member: ${id}`],
- [/^(\d+) رتبة · (\d+) قسم · (\d+) غرفة$/u,(_,r,c,ch)=>`${r} roles · ${c} categories · ${ch} channels`],
- [/^أهلًا بك في (.*)$/u, (_,name)=>`Welcome to ${name}`],
- [/^(\d+) أقسام منظمة$/u, (_,n)=>`${n} categories`],
- [/^(\d+) رتب محفوظة$/u, (_,n)=>`${n} preserved roles`],
- [/^(\d+) رتبة$/u, (_,n)=>`${n} roles`],[/^(\d+) عنصر$/u, (_,n)=>`${n} items`],
- [/^آخر تحديث (.*)$/u, (_,time)=>`Updated ${time}`],
- [/^تعديل القسم (.*)$/u, (_,name)=>`Edit category ${name}`],
- [/^(\d+) صلاحية متاحة من أصل (\d+)$/u, (_,n,total)=>`${n} of ${total} permissions granted`],
- [/^معاينة الرسالة · (.*)$/u, (_,name)=>`Message preview · ${name}`],
- [/^رسالة إلى: (.*)$/u, (_,name)=>`Message to: ${name}`],
- [/^(.+) · متصل ببيانات (.*)$/u, (_,bot,name)=>`${bot} · Loaded ${name}`],
- [/^السيرفر:$/u, ()=> 'Server:'],[/^الغرفة:$/u, ()=> 'Channel:'],[/^رقم السيرفر:$/u, ()=> 'Server ID:'],
- [/^([٠-٩]{2}:[٠-٩]{2}) ([صم])$/u, (_,time,period)=>time.replace(/[٠-٩]/g,n=>String('٠١٢٣٤٥٦٧٨٩'.indexOf(n)))+(period==='ص'?' AM':' PM')],
- [/^(.*)المنشن التلقائي معطّل\.$/u, (_,prefix)=>`${prefix}Automatic mentions disabled.`],
-];
-en['الترحيب والمغادرة']='Welcome & farewell';
-let language='ar', observer;
-const originals=new WeakMap(), attributes=new WeakMap();
-const skip='script,style,textarea,input,code,[translate="no"],.emoji,.entity-title strong,#sidebarGuildName,#emojiNamePreview,#editParent option,#overwriteRole option,.message-bubble,.discord-embed,.review-summary,.report-content,.message-confirm-preview';
-function translate(value){
-  if(language!=='en')return value;
-  const trimmed=value.trim();let translated=Object.hasOwn(en,trimmed)?en[trimmed]:undefined;
-  if(translated===undefined){for(const [pattern,format] of patterns){const m=trimmed.match(pattern);if(m){translated=format(...m);break;}}}
-  if(translated===undefined)return value;
-  return value.slice(0,value.indexOf(trimmed))+translated+value.slice(value.indexOf(trimmed)+trimmed.length);
-}
-function localize(){
-  observer?.disconnect();
-  try{
-    const walker=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT);let node;
-    while((node=walker.nextNode())){
-      if(!node.parentElement||node.parentElement.closest(skip)||!node.data.trim())continue;
-      let entry=originals.get(node);if(!entry||node.data!==entry.rendered)entry={source:node.data};
-      entry.rendered=translate(entry.source);if(node.data!==entry.rendered)node.data=entry.rendered;originals.set(node,entry);
-    }
-    document.querySelectorAll('[placeholder],[aria-label],[title]').forEach(element=>{
-      if(element.closest('[translate="no"]'))return;
-      const saved=attributes.get(element)??{};
-      for(const name of ['placeholder','aria-label','title']){
-        if(!element.hasAttribute(name)||element.matches('[data-entity-id]')&&name==='title')continue;
-        const value=element.getAttribute(name);let entry=saved[name];if(!entry||value!==entry.rendered)entry={source:value};
-        entry.rendered=translate(entry.source);
-        if(language==='en'&&element.dataset.nameEmoji){const english=(saved.title?.source??element.getAttribute('title')??'').replace(/\p{Script=Arabic}+/gu,'').trim()||'Custom emoji';entry.rendered=english+(name==='aria-label'?' '+element.dataset.nameEmoji:'');}
-        if(value!==entry.rendered)element.setAttribute(name,entry.rendered);saved[name]=entry;
+  const catalogs = window.CortexLocales;
+  if (!catalogs?.ar || !catalogs?.en || !catalogs?.patterns)
+    throw new Error('Language catalogs must load before i18n.js.');
+  const en = Object.fromEntries(
+    Object.keys(catalogs.ar)
+      .filter((key) => key.startsWith('ui.'))
+      .map((key) => [catalogs.ar[key], catalogs.en[key]]),
+  );
+  const patterns = catalogs.patterns;
+  let language = 'ar',
+    observer;
+  const originals = new WeakMap(),
+    attributes = new WeakMap();
+  const skip =
+    'script,style,textarea,input,code,[translate="no"],.emoji,.entity-title strong,#sidebarGuildName,#emojiNamePreview,#editParent option,#overwriteRole option,.message-bubble,.discord-embed,.review-summary,.report-content,.message-confirm-preview';
+  function translate(value) {
+    if (language !== 'en') return value;
+    const trimmed = value.trim();
+    let translated = Object.hasOwn(en, trimmed) ? en[trimmed] : undefined;
+    if (translated === undefined) {
+      for (const [pattern, format] of patterns) {
+        const m = trimmed.match(pattern);
+        if (m) {
+          translated = format(...m);
+          break;
+        }
       }
-      attributes.set(element,saved);
+    }
+    if (translated === undefined) return value;
+    return (
+      value.slice(0, value.indexOf(trimmed)) +
+      translated +
+      value.slice(value.indexOf(trimmed) + trimmed.length)
+    );
+  }
+  function localize() {
+    observer?.disconnect();
+    try {
+      const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+      let node;
+      while ((node = walker.nextNode())) {
+        if (!node.parentElement || node.parentElement.closest(skip) || !node.data.trim()) continue;
+        let entry = originals.get(node);
+        if (!entry || node.data !== entry.rendered) entry = { source: node.data };
+        entry.rendered = translate(entry.source);
+        if (node.data !== entry.rendered) node.data = entry.rendered;
+        originals.set(node, entry);
+      }
+      document.querySelectorAll('[placeholder],[aria-label],[title]').forEach((element) => {
+        if (element.closest('[translate="no"]')) return;
+        const saved = attributes.get(element) ?? {};
+        for (const name of ['placeholder', 'aria-label', 'title']) {
+          if (
+            !element.hasAttribute(name) ||
+            (element.matches('[data-entity-id]') && name === 'title')
+          )
+            continue;
+          const value = element.getAttribute(name);
+          let entry = saved[name];
+          if (!entry || value !== entry.rendered) entry = { source: value };
+          entry.rendered = translate(entry.source);
+          if (language === 'en' && element.dataset.nameEmoji) {
+            const english =
+              (saved.title?.source ?? element.getAttribute('title') ?? '')
+                .replace(/\p{Script=Arabic}+/gu, '')
+                .trim() || 'Custom emoji';
+            entry.rendered =
+              english + (name === 'aria-label' ? ' ' + element.dataset.nameEmoji : '');
+          }
+          if (value !== entry.rendered) element.setAttribute(name, entry.rendered);
+          saved[name] = entry;
+        }
+        attributes.set(element, saved);
+      });
+    } finally {
+      observer?.observe(document.body, {
+        subtree: true,
+        childList: true,
+        characterData: true,
+        attributes: true,
+        attributeFilter: ['placeholder', 'aria-label', 'title'],
+      });
+    }
+  }
+  function apply(next) {
+    language = next;
+    document.documentElement.lang = next;
+    document.documentElement.dir = next === 'ar' ? 'rtl' : 'ltr';
+    document.title =
+      next === 'ar' ? 'Cortex Manager 6 | لوحة التحكم الحديثة' : 'Cortex Manager 6 | Dashboard';
+    document.querySelectorAll('#languageSwitch [data-language]').forEach((option) => {
+      option.setAttribute('aria-pressed', String(option.dataset.language === next));
     });
-  } finally {observer?.observe(document.body,{subtree:true,childList:true,characterData:true,attributes:true,attributeFilter:['placeholder','aria-label','title']});}
-}
-function apply(next){
-  language=next;document.documentElement.lang=next;document.documentElement.dir=next==='ar'?'rtl':'ltr';
-  document.title=next==='ar'?'Cortex Manager 6 | لوحة التحكم الحديثة':'Cortex Manager 6 | Dashboard';
-  document.querySelectorAll('#languageSwitch [data-language]').forEach(option=>{option.setAttribute('aria-pressed',String(option.dataset.language===next));});
-  localize();window.dispatchEvent(new CustomEvent('cortex-language-changed',{detail:next}));
-}
-window.CortexI18n={get language(){return language;},translate,refresh:localize};
-const button=document.querySelector('#languageSwitch');
-let pending=true;
-function setPending(value){pending=value;button.setAttribute('aria-busy',String(value));button.querySelectorAll('[data-language]').forEach(option=>{option.disabled=value;});}
-const fragment=location.hash.slice(1),key=fragment.startsWith('key=')?new URLSearchParams(fragment).get('key'):decodeURIComponent(fragment);
-async function preference(method='GET',value){const response=await fetch('/api/preferences',{method,cache:'no-store',headers:{'X-Cortex-Key':key,...(value?{'Content-Type':'application/json'}:{})},...(value?{body:JSON.stringify({language:value})}:{})});if(!response.ok)throw new Error('Language preference could not be saved.');return response.json();}
-observer=new MutationObserver(localize);
-apply('ar');
-preference().then(p=>{if(['ar','en'].includes(p.language))apply(p.language);}).catch(()=>{}).finally(()=>setPending(false));
-button.onclick=async event=>{const option=event.target.closest('[data-language]'),next=option?.dataset.language;if(pending||!['ar','en'].includes(next)||next===language)return;const previous=language;setPending(true);apply(next);try{await preference('POST',language);}catch{apply(previous);window.dispatchEvent(new CustomEvent('cortex-language-error'));}finally{setPending(false);}};
+    localize();
+    window.dispatchEvent(new CustomEvent('cortex-language-changed', { detail: next }));
+  }
+  function text(key) {
+    const value = catalogs[language]?.[key];
+    if (typeof value !== 'string') throw new Error('Unknown translation key: ' + key);
+    return value;
+  }
+  window.CortexI18n = {
+    get language() {
+      return language;
+    },
+    translate,
+    text,
+    refresh: localize,
+  };
+  const button = document.querySelector('#languageSwitch');
+  let pending = true;
+  function setPending(value) {
+    pending = value;
+    button.setAttribute('aria-busy', String(value));
+    button.querySelectorAll('[data-language]').forEach((option) => {
+      option.disabled = value;
+    });
+  }
+  const fragment = location.hash.slice(1),
+    key = fragment.startsWith('key=')
+      ? new URLSearchParams(fragment).get('key')
+      : decodeURIComponent(fragment);
+  async function preference(method = 'GET', value) {
+    const response = await fetch('/api/preferences', {
+      method,
+      cache: 'no-store',
+      headers: { 'X-Cortex-Key': key, ...(value ? { 'Content-Type': 'application/json' } : {}) },
+      ...(value ? { body: JSON.stringify({ language: value }) } : {}),
+    });
+    if (!response.ok) throw new Error('Language preference could not be saved.');
+    return response.json();
+  }
+  observer = new MutationObserver(localize);
+  apply('ar');
+  preference()
+    .then((p) => {
+      if (['ar', 'en'].includes(p.language)) apply(p.language);
+    })
+    .catch(() => {})
+    .finally(() => setPending(false));
+  button.onclick = async (event) => {
+    const option = event.target.closest('[data-language]'),
+      next = option?.dataset.language;
+    if (pending || !['ar', 'en'].includes(next) || next === language) return;
+    const previous = language;
+    setPending(true);
+    apply(next);
+    try {
+      await preference('POST', language);
+    } catch {
+      apply(previous);
+      window.dispatchEvent(new CustomEvent('cortex-language-error'));
+    } finally {
+      setPending(false);
+    }
+  };
 })();

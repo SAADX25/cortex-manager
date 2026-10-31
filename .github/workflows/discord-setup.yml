@@ -44,6 +44,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - run: npm ci
       - name: Test safety and design
         run: node --test
       - name: Capture configuration, assignments and complete proposal (no writes)
@@ -78,6 +79,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - run: npm ci
       - name: Test safety and design
         run: node --test
       - name: Validate explicit confirmations before using Discord

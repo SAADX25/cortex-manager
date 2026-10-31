@@ -12,12 +12,18 @@
     "desktop": "powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File desktop/Launch.ps1",
     "desktop:build": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File desktop/Launch.ps1 -BuildOnly",
     "desktop:demo": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File desktop/Launch.ps1 -Demo",
-    "desktop:test": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File desktop/Test.ps1"
+    "desktop:test": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File desktop/Test.ps1",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "check": "npm run format:check && node scripts/check.mjs"
   },
   "engines": {
-    "node": ">=22.4"
+    "node": ">=22.9"
   },
   "dependencies": {
     "@napi-rs/canvas": "1.1.0"
+  },
+  "devDependencies": {
+    "prettier": "3.6.2"
   }
 }

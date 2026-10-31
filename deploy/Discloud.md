@@ -43,6 +43,7 @@ Polling is sequential, roughly every two minutes, with provider backoff. The fir
 The free plan does not guarantee uninterrupted operation. Check current Discloud plan limits; automatic restart requires a supported plan. Downloading the package performs no deployment and sends no Discord messages.
 
 Official references:
+
 - https://docs.discloud.com/en/configurations/discloud.config
 - https://docs.discloud.com/en/how-to-host
 - https://docs.discloud.com/en/faq/troubleshooting-solutions/diagnosing-offline-applications

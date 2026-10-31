@@ -1,3 +1,5 @@
+> Current policy: custom role names have no permanent protection. Manageability follows Discord hierarchy, bot permissions and managed-role status; all deletions still require preview and explicit confirmation.
+
 # Proposed Discord redesign — ready for code review
 
 The project now also includes a local Arabic Windows app: `Start-Cortex-Manager.cmd`, `desktop/ModernLauncher.cs`, and `desktop/README.ar.md`. It offers Online/Offline bot presence, permission diagnostics and opt-in authorization links, read-only preview and separately confirmed rebuild. The existing protected-role policy and rebuild engine are reused. Creating/opening the app does not run a live Discord operation; testing uses a simulated server.
@@ -14,7 +16,6 @@ The live channel/role browser now supports handle dragging and a keyboard-access
 
 The Server redesign page now has a bilingual blueprint editor: Arabic/English presets, categories and text/voice channels, role names/colors/permissions, private access, read-only writers, optional opening messages and explicit legacy-role migration mappings. Drafts save locally per guild and import/export validated JSON. Preview records the exact reviewed blueprint in `design.json`; rebuilding verifies it against the approval and source fingerprint. Any draft change invalidates the displayed approval. Up/down controls change creation sequence while existing role positions stay unchanged. GitHub Actions includes the reviewed blueprint in the pre-execution backup artifact.
 
-- Permanently protect ★ OWNER ★ and ★ CO_OWNER ★ by role name and the IDs captured in the reviewed snapshot. Never send edit/delete/reorder/member-removal requests for either role. Preserve permissions, membership and relative hierarchy.
 - Preserve @everyone, managed/integration/bot roles, bot-assigned roles and roles outside the bot hierarchy; report these without stopping normal cleanup.
 - Leave Community rules/moderator-only channels, guild-linked channels and parent categories unchanged. Reuse Community functions for corresponding design slots.
 - Split preview and rebuild into separate manually selected jobs. Rebuild requires a successful preview from the same code revision, the exact server ID and the explicit deletion phrase.
@@ -26,21 +27,19 @@ The Server redesign page now has a bilingual blueprint editor: Arabic/English pr
 
 ## Proposed roles
 
-Existing leadership stays as ★ OWNER ★ and ★ CO_OWNER ★. No Founder or replacement Co Owner role is created. New roles are created in this order without moving existing roles. Existing exact matches retain their IDs and membership.
-
-| Role | Color | Requested permissions |
-|---|---|---|
-| 🛡️・Administrator | #E74C3C | ViewChannel, SendMessages, ReadMessageHistory, ManageChannels, ManageRoles, ManageMessages, KickMembers, BanMembers, ModerateMembers |
-| ⚔️・Head Moderator | #D35400 | ViewChannel, SendMessages, ReadMessageHistory, KickMembers, BanMembers, ModerateMembers, ManageMessages, ManageNicknames, ManageThreads |
-| 🔨・Moderator | #3498DB | ViewChannel, SendMessages, ReadMessageHistory, KickMembers, ModerateMembers, ManageMessages, ManageThreads |
-| 🎫・Support Team | #1ABC9C | ViewChannel, SendMessages, ReadMessageHistory |
-| 🎯・Event Host | #9B59B6 | ViewChannel, SendMessages, ReadMessageHistory, ManageEvents, MoveMembers |
-| 🎨・Content Creator | #FF78B2 | ViewChannel, SendMessages, ReadMessageHistory, AttachFiles, EmbedLinks |
-| 💎・VIP | #13D9D4 | ViewChannel, SendMessages, ReadMessageHistory |
-| 🎮・Gamer | #5865F2 | ViewChannel, SendMessages, ReadMessageHistory, Connect, Speak, AddReactions, CreatePublicThreads, SendMessagesInThreads |
-| ✅・Verified | #57F287 | ViewChannel, SendMessages, ReadMessageHistory, Connect, Speak |
-| 🌿・Member | #95A5A6 | ViewChannel, SendMessages, ReadMessageHistory, Connect, Speak |
-| 🔇・Muted | #555C68 | Channel restriction overwrites |
+| Role                | Color   | Requested permissions                                                                                                                   |
+| ------------------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| 🛡️・Administrator   | #E74C3C | ViewChannel, SendMessages, ReadMessageHistory, ManageChannels, ManageRoles, ManageMessages, KickMembers, BanMembers, ModerateMembers    |
+| ⚔️・Head Moderator  | #D35400 | ViewChannel, SendMessages, ReadMessageHistory, KickMembers, BanMembers, ModerateMembers, ManageMessages, ManageNicknames, ManageThreads |
+| 🔨・Moderator       | #3498DB | ViewChannel, SendMessages, ReadMessageHistory, KickMembers, ModerateMembers, ManageMessages, ManageThreads                              |
+| 🎫・Support Team    | #1ABC9C | ViewChannel, SendMessages, ReadMessageHistory                                                                                           |
+| 🎯・Event Host      | #9B59B6 | ViewChannel, SendMessages, ReadMessageHistory, ManageEvents, MoveMembers                                                                |
+| 🎨・Content Creator | #FF78B2 | ViewChannel, SendMessages, ReadMessageHistory, AttachFiles, EmbedLinks                                                                  |
+| 💎・VIP             | #13D9D4 | ViewChannel, SendMessages, ReadMessageHistory                                                                                           |
+| 🎮・Gamer           | #5865F2 | ViewChannel, SendMessages, ReadMessageHistory, Connect, Speak, AddReactions, CreatePublicThreads, SendMessagesInThreads                 |
+| ✅・Verified        | #57F287 | ViewChannel, SendMessages, ReadMessageHistory, Connect, Speak                                                                           |
+| 🌿・Member          | #95A5A6 | ViewChannel, SendMessages, ReadMessageHistory, Connect, Speak                                                                           |
+| 🔇・Muted           | #555C68 | Channel restriction overwrites                                                                                                          |
 
 Permissions are capped at what the bot can delegate, with every gap shown in the live preview. Privileged roles are assigned only through explicitly reviewed ID mappings; unmapped staff assignments are retained in their original roles.
 
@@ -88,7 +87,7 @@ Public community section.
 - 🔊 Voice **🎮・فريق الألعاب 01** — 5 seats
 - 🔊 Voice **🎮・فريق الألعاب 02** — 5 seats
 - 🔊 Voice **☕・جلسة هادئة**
-- 🔊 Voice **💎・مجلس المميزين** — private VIP / moderators / leadership — 10 seats
+- 🔊 Voice **💎・مجلس المميزين** — private VIP / moderators — 10 seats
 - 🔊 Voice **🌙・استراحة**
 
 ### ╠═ ✦ 05 • مركز المساعدة
@@ -101,32 +100,28 @@ Public community section.
 
 ### ╠═ ✦ 06 • مقر الإدارة
 
-Private — 🛡️・Administrator, ⚔️・Head Moderator, 🔨・Moderator, 🎫・Support Team, OWNER and CO_OWNER.
-
 - # Text **🛡️・دردشة-الإدارة** — نقاشات الطاقم الخاصة
 - # Text **📋・مهام-الإدارة** — المهام والتنظيم
 - 🔊 Voice **🎙️・اجتماع الإدارة** — 12 seats
 
 ### ╚═ ✦ 07 • سجلات الإدارة
 
-Private — 🛡️・Administrator, ⚔️・Head Moderator, OWNER and CO_OWNER.
-
 - # Text **📊・ملاحظات-الإشراف** — ملاحظات الإدارة (ليست سجلات تلقائية)
 - # Text **🔐・ملاحظات-الأمان** — ملاحظات الأمان والبلاغات الداخلية
 
 ## Files to review
 
-| File | Purpose |
-|---|---|
-| src/design.mjs | Roles, colors, Arabic layout and explicit ROLE_MIGRATIONS |
-| src/safety.mjs | Preservation policy, snapshot fingerprint, confirmation and mutation allowlist |
-| src/plan.mjs | Full creation/deletion/preservation/migration proposal |
-| src/rebuild.mjs | Creation, verified additive migration and guarded deletion phases |
-| src/api.mjs | Sequential REST requests, rate-limit handling and paginated member backups |
-| src/permissions.mjs | Private staff/VIP access, preserved leadership and permission caps |
-| src/cli.mjs | Separate preview approval and rebuild verification |
-| .github/workflows/discord-setup.yml | Separate manual jobs, preview artifact validation and reports |
-| test/*.test.mjs | Simulated API and rebuild safety scenarios |
+| File                                | Purpose                                                                        |
+| ----------------------------------- | ------------------------------------------------------------------------------ |
+| src/design.mjs                      | Roles, colors, Arabic layout and explicit ROLE_MIGRATIONS                      |
+| src/safety.mjs                      | Preservation policy, snapshot fingerprint, confirmation and mutation allowlist |
+| src/plan.mjs                        | Full creation/deletion/preservation/migration proposal                         |
+| src/rebuild.mjs                     | Creation, verified additive migration and guarded deletion phases              |
+| src/api.mjs                         | Sequential REST requests, rate-limit handling and paginated member backups     |
+| src/permissions.mjs                 | Private staff/VIP access, Discord-protected roles and permission caps          |
+| src/cli.mjs                         | Separate preview approval and rebuild verification                             |
+| .github/workflows/discord-setup.yml | Separate manual jobs, preview artifact validation and reports                  |
+| test/\*.test.mjs                    | Simulated API and rebuild safety scenarios                                     |
 
 ## Review and execution
 
