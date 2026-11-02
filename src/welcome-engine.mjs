@@ -14,6 +14,7 @@ export function createWelcomeEngine({
   isStopping = () => false,
   renderCard = renderWelcomeCard,
   fetchAvatar = fetchWelcomeAvatar,
+  suppressFarewell = async () => false,
 }) {
   if (fs.existsSync(stateFile) && fs.statSync(stateFile).size > 128000)
     throw new Error('Welcome state too large.');
@@ -65,6 +66,7 @@ export function createWelcomeEngine({
         if (state.seen.includes(key)) return;
         const s = await snapshot(api, event.guildId, { includeMembers: false }),
           channel = s.channels.find((c) => c.id === settings.channelId);
+        if (type === 'leave' && (await suppressFarewell(event, s))) return;
         if (
           !channel ||
           ![0, 2, 5].includes(channel.type) ||

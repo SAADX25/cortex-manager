@@ -1134,7 +1134,7 @@ test('reviewing any edit invalidates a previous rebuild approval', async (t) => 
   );
 });
 
-test('real worker previews and grants a role over HTTP using only an additive mocked PUT', async (t) => {
+test('real worker lists role members and reviews grant/removal using only exact mocked role assignment endpoints', async (t) => {
   const repo = fileURLToPath(new URL('../', import.meta.url)),
     s = await setup(t, {
       runWorker: (mode, config, options) =>
@@ -1145,8 +1145,8 @@ test('real worker previews and grants a role over HTTP using only an additive mo
   fs.writeFileSync(
     mock,
     `import fs from 'node:fs';import {sample,fakeServer} from ${JSON.stringify(new URL('./helpers/fake.mjs', import.meta.url).href)};
- const server=fakeServer(sample());globalThis.fetch=async(url,options)=>{const route=new URL(url).pathname.replace('/api/v10','');let result;
- if(options.method==='GET')result=await server.api.get(route);else {if(options.method!=='PUT')throw new Error('Only PUT allowed');fs.appendFileSync(${JSON.stringify(calls)},JSON.stringify({method:options.method,route})+'\\n');result=await server.api.call('PUT',route);}
+ const storage=${JSON.stringify(path.join(s.sessionDir, 'member-state.json'))};const server=fakeServer(fs.existsSync(storage)?JSON.parse(fs.readFileSync(storage,'utf8')):sample());globalThis.fetch=async(url,options)=>{const parsed=new URL(url),route=parsed.pathname.replace('/api/v10','')+parsed.search;let result;
+ if(options.method==='GET')result=await server.api.get(route);else {if(!['PUT','DELETE'].includes(options.method))throw new Error('Only role assignment operations allowed');fs.appendFileSync(${JSON.stringify(calls)},JSON.stringify({method:options.method,route})+'\\n');result=await server.api.call(options.method,route);fs.writeFileSync(storage,JSON.stringify(server.state));}
  return result===null?new Response(null,{status:204}):new Response(JSON.stringify(result));};`,
   );
   const prior = process.env.NODE_OPTIONS;
@@ -1178,6 +1178,40 @@ test('real worker previews and grants a role over HTTP using only an additive mo
   assert.deepEqual(fs.readFileSync(calls, 'utf8').trim().split('\n').map(JSON.parse), [
     { method: 'PUT', route: `/guilds/${ID}/members/${memberId}/roles/${roleId}` },
   ]);
+  await s.action('role-members', { ...credentials, roleMembersRequest: { roleId, after: '0' } });
+  const roster = await s.settled();
+  assert.equal(roster.error, null);
+  assert.ok(roster.roleMembers.members.some((m) => m.id === memberId));
+  await s.action('role-grant-preview', {
+    ...credentials,
+    roleGrantRequest: { roleId, memberId, operation: 'remove' },
+  });
+  const removal = await s.settled();
+  assert.equal(removal.error, null);
+  await s.action('role-grant-apply', {
+    ...credentials,
+    roleGrantConfirmation: {
+      confirmed: true,
+      guildId: ID,
+      roleId,
+      memberId,
+      operation: 'remove',
+      approvalHash: removal.roleGrantPreview.approvalHash,
+    },
+  });
+  const removed = await s.settled();
+  assert.equal(removed.error, null);
+  assert.equal(removed.result.status, 'removed');
+  const lines = fs.readFileSync(calls, 'utf8').trim().split('\n').map(JSON.parse);
+  assert.equal(lines.length, 2);
+  assert.deepEqual(lines[1], {
+    method: 'DELETE',
+    route: '/guilds/' + ID + '/members/' + memberId + '/roles/' + roleId,
+  });
+  const persisted = JSON.parse(
+    fs.readFileSync(path.join(s.sessionDir, 'member-state.json'), 'utf8'),
+  );
+  assert.deepEqual(persisted.members.find((m) => m.id === memberId).roles, []);
 });
 
 test('real worker can review, confirm and save role and voice edits, then create a channel over HTTP', async (t) => {
@@ -1638,4 +1672,71 @@ test('language catalogs load from the fixed static allowlist without starting wo
   assert.equal(await roleResponse.text(), roleSource);
   assert.equal((await s.request('/locales/unknown.js')).status, 404);
   assert.equal(s.calls.length, 0);
+});
+
+test('member roster is read-only and removal approval cannot be changed into a grant or reused', async (t) => {
+  const s = await setup(t),
+    credentials = { token: 'test-secret', guildId: ID };
+  const roleId = '555555555555555555',
+    memberId = '888888888888888888';
+  await s.action('role-members', { ...credentials, roleMembersRequest: { roleId, after: '0' } });
+  assert.equal(s.calls[0].mode, 'role-members');
+  assert.equal(s.calls[0].config.roleMembersRequest.after, '0');
+  s.calls[0].output({
+    event: 'role-members',
+    data: {
+      guildId: ID,
+      roleId,
+      after: '0',
+      next: null,
+      members: [{ id: memberId, name: 'Alex', removable: true }],
+    },
+  });
+  s.calls[0].finish();
+  await s.settled();
+  assert.equal((await s.state()).roleMembers.members[0].name, 'Alex');
+  await s.action('role-grant-preview', {
+    ...credentials,
+    roleGrantRequest: { roleId, memberId, operation: 'remove' },
+  });
+  const plan = {
+    guildId: ID,
+    roleId,
+    memberId,
+    operation: 'remove',
+    approvalHash: 'remove-reviewed',
+    administrator: false,
+  };
+  s.calls[1].output({ event: 'role-grant-preview', data: plan });
+  s.calls[1].finish();
+  await s.settled();
+  for (const operation of ['grant', undefined])
+    assert.equal(
+      (
+        await s.action('role-grant-apply', {
+          ...credentials,
+          roleGrantConfirmation: { ...plan, operation, confirmed: true },
+        })
+      ).status,
+      400,
+    );
+  const confirmation = { ...plan, confirmed: true };
+  assert.equal(
+    (await s.action('role-grant-apply', { ...credentials, roleGrantConfirmation: confirmation }))
+      .status,
+    202,
+  );
+  assert.equal(s.calls[2].config.roleGrantConfirmation.operation, 'remove');
+  s.calls[2].finish();
+  await s.settled();
+  assert.equal(
+    (await s.action('role-grant-apply', { ...credentials, roleGrantConfirmation: confirmation }))
+      .status,
+    400,
+  );
+  const demo = await setup(t, { demo: true });
+  assert.equal(
+    (await demo.action('role-grant-apply', { roleGrantConfirmation: confirmation })).status,
+    403,
+  );
 });

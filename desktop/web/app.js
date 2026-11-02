@@ -21,7 +21,7 @@ const titles = {
   welcome: 'الترحيب والمغادرة',
   social: 'البثوث والمقاطع',
   changes: 'مساحة التغييرات',
-  simulator: 'محاكي الصلاحيات',
+  simulator: 'فاحص الوصول',
   overview: 'نظرة عامة',
   channels: 'الأقسام والقنوات',
   roles: 'الرتب والصلاحيات',
@@ -636,6 +636,10 @@ async function action(name, extra = {}) {
       model.moveDraft.plan = null;
       renderMoveDialog(error.message);
     }
+    if (name === 'role-members' && model.grantDraft) {
+      model.grantDraft.loadingMembers = false;
+      if ($('#confirmDialog').open) renderRoleGrantDialog(error.message);
+    }
     if (name === 'role-grant-preview' && model.grantDraft) {
       model.grantDraft.pending = false;
       if ($('#confirmDialog').open && $('#grantMemberId')) renderRoleGrantDialog(error.message);
@@ -767,6 +771,23 @@ async function pollState(force = false) {
       model.awaitingMessage = false;
       refresh = true;
     }
+    if (model.grantDraft?.loadingMembers && !data.busy && $('#confirmDialog').open) {
+      const d = model.grantDraft,
+        page = data.roleMembers;
+      d.loadingMembers = false;
+      if (
+        page?.guildId === d.guildId &&
+        page.roleId === d.roleId &&
+        page.after === d.memberCursor
+      ) {
+        const members = new Map(d.members.map((m) => [m.id, m]));
+        for (const m of page.members) members.set(m.id, m);
+        d.members = [...members.values()];
+        d.next = page.next;
+        d.membersLoaded = true;
+      }
+      renderRoleGrantDialog(data.error ?? '');
+    }
     if (
       model.grantDraft?.pending &&
       !data.busy &&
@@ -776,7 +797,13 @@ async function pollState(force = false) {
       const d = model.grantDraft,
         p = data.roleGrantPreview;
       d.pending = false;
-      if (p && p.guildId === d.guildId && p.roleId === d.roleId && p.memberId === d.memberId)
+      if (
+        p &&
+        p.guildId === d.guildId &&
+        p.roleId === d.roleId &&
+        p.memberId === d.memberId &&
+        (p.operation ?? 'grant') === d.operation
+      )
         d.plan = p;
       renderRoleGrantDialog(data.error ?? '');
     }
@@ -831,7 +858,12 @@ async function pollState(force = false) {
           toast('تم إرسال الرسالة باسم البوت.', 'success');
         } else if (op === 'role-grant-apply') {
           model.grantDraft = null;
-          toast('تم منح الرتبة للعضو المحدد.', 'success');
+          toast(
+            data.result?.operation === 'remove'
+              ? window.CortexI18n.text('role_members.doneRemove')
+              : 'تم منح الرتبة للعضو المحدد.',
+            'success',
+          );
           setTimeout(() => action('inventory'), 80);
         } else if (op === 'edit-apply' && model.moveDraft?.applying) {
           model.moveDraft = null;
@@ -1266,10 +1298,12 @@ function roleMemberInfo(e) {
         ? 'عدد تقريبي من Discord'
         : 'حسب آخر تحديث') +
     '</small><button type="button" class="btn btn-ghost btn-small" id="grantRole" ' +
-    (busy() || e.item.readOnlyReason ? 'disabled' : '') +
+    (busy() ? 'disabled' : '') +
     '>' +
     icon('users') +
-    ' منح الرتبة لعضو</button></div>'
+    ' ' +
+    window.CortexI18n.text('role_members.title') +
+    '</button></div>'
   );
 }
 
@@ -1964,24 +1998,104 @@ function showCreateChannel() {
   };
 }
 function openRoleGrant(e) {
-  if (!e.item || e.item.readOnlyReason || busy()) return;
+  if (!e.item || busy()) return;
   model.grantDraft = {
     guildId: guildId(),
     roleId: e.item.id,
     roleName: e.item.name,
     memberId: '',
+    operation: 'grant',
     pending: false,
     plan: null,
+    members: [],
+    membersLoaded: false,
+    loadingMembers: false,
+    next: null,
+    memberCursor: '0',
+    search: '',
   };
   renderRoleGrantDialog();
+  loadRoleMembers('0');
+}
+function loadRoleMembers(after) {
+  const d = model.grantDraft;
+  if (!d || busy() || d.pending || d.loadingMembers) return;
+  d.loadingMembers = true;
+  d.memberCursor = after;
+  d.plan = null;
+  if (after === '0') {
+    d.members = [];
+    d.membersLoaded = false;
+  }
+  renderRoleGrantDialog();
+  action('role-members', { roleMembersRequest: { roleId: d.roleId, after } });
 }
 function renderRoleGrantDialog(error = '') {
   const d = model.grantDraft;
   if (!d) return;
-  const p = d.plan;
-  showDialog(
-    `<div class="dialog-symbol">${icon('users')}</div><h2>منح الرتبة لعضو</h2><p>السيرفر: <strong translate="no">${esc(guildName())}</strong><br>الرتبة: <strong translate="no">${esc(d.roleName)}</strong></p><p>سيتم منح الرتبة بصلاحياتها الحالية المحفوظة في Discord.</p><div class="field"><label for="grantMemberId">معرّف العضو · User ID</label><input id="grantMemberId" class="ltr" inputmode="numeric" maxlength="22" autocomplete="off" placeholder="أدخل معرّف العضو من Discord" value="${esc(d.memberId)}" ${d.pending ? 'disabled' : ''}><span class="field-help">فعّل وضع المطوّر في Discord، ثم اضغط على العضو واختر نسخ معرّف المستخدم.</span></div>${model.state.demo ? '<p class="field-help">للتجربة استخدم العضو الوهمي: <code>900000000000001005</code>. المنح الحقيقي معطّل.</p>' : ''}${error ? `<div class="notice yellow" role="alert"><div>${esc(error)}</div></div>` : ''}${p ? `<div class="grant-reviewed"><span>العضو المستهدف</span><strong translate="no">${esc(p.memberName)}</strong><code>${esc(p.memberId)}</code><p>تُضاف هذه الرتبة فقط. تبقى رتب العضو الحالية محفوظة.</p></div>${p.administrator ? `<div class="notice yellow"><div><strong>هذه الرتبة تمنح Administrator</strong>سيحصل العضو على صلاحيات إدارة كاملة في السيرفر.</div></div><label class="grant-admin-ack"><input type="checkbox" id="grantAdminAck">أوافق على منح صلاحية Administrator لهذا العضو المحدد.</label>` : ''}` : ''}<div class="dialog-actions"><button class="btn btn-ghost" value="cancel">إلغاء</button><button class="btn btn-ghost" type="button" id="previewRoleGrant" ${d.pending ? 'disabled' : ''}>${icon('eye')} ${d.pending ? 'جارٍ التحقق من العضو…' : 'معاينة منح الرتبة'}</button><button class="btn btn-primary" type="button" id="confirmRoleGrant" ${!p || d.pending || p.administrator || model.state.demo ? 'disabled' : ''}>${icon('check')} تأكيد منح الرتبة</button></div>`,
-  );
+  const t = (k) => window.CortexI18n.text('role_members.' + k),
+    p = d.plan,
+    waiting = d.pending || d.loadingMembers;
+  showDialog(`<div class="dialog-symbol">${icon('users')}</div><h2>${t('title')}</h2><p translate="no">${esc(guildName())} · ${esc(d.roleName)}</p>
+ <div class="role-member-toolbar"><button type="button" class="btn ${d.operation === 'grant' ? 'btn-primary' : 'btn-ghost'}" id="memberGrantMode" ${waiting ? 'disabled' : ''}>${icon('plus')} ${t('grant')}</button><button type="button" class="btn ${d.operation === 'remove' ? 'btn-danger' : 'btn-ghost'}" id="memberRemoveMode" ${waiting ? 'disabled' : ''}>${icon('trash')} ${t('remove')}</button></div>
+ <section class="role-member-roster"><div class="role-member-toolbar"><strong>${t('members')}</strong><button type="button" class="btn btn-ghost btn-small" id="reloadRoleMembers" ${waiting ? 'disabled' : ''}>${icon('refresh')} ${t('load')}</button></div><input id="roleMemberSearch" type="search" aria-label="${t('search')}" placeholder="${t('search')}" value="${esc(d.search)}"><div class="role-member-list" id="roleMemberList"></div><button type="button" class="btn btn-ghost btn-small" id="moreRoleMembers" ${waiting || !d.next ? 'disabled' : ''}>${t('more')}</button></section>
+ <div class="field"><label for="grantMemberId">${t('id')}</label><input id="grantMemberId" class="ltr" inputmode="numeric" maxlength="22" autocomplete="off" value="${esc(d.memberId)}" ${waiting ? 'disabled' : ''}></div>
+ <p>${d.operation === 'remove' ? t('removeNote') : t('grantNote')}</p>
+ ${error ? '<div class="notice yellow" role="alert">' + esc(error) + '</div>' : ''}
+ ${p ? '<div class="grant-reviewed"><strong translate="no">' + esc(p.memberName) + '</strong><code>' + esc(p.memberId) + '</code><strong>' + (p.operation === 'remove' ? t('remove') : t('grant')) + '</strong></div>' : ''}
+ ${p?.administrator ? '<label class="grant-admin-ack"><input type="checkbox" id="grantAdminAck">' + t('admin') + '</label>' : ''}
+ <div class="dialog-actions"><button class="btn btn-ghost" value="cancel">${t('cancel')}</button><button class="btn btn-ghost" type="button" id="previewRoleGrant" ${waiting ? 'disabled' : ''}>${icon('eye')} ${d.pending ? t('checking') : t('preview')}</button><button class="btn ${d.operation === 'remove' ? 'btn-danger' : 'btn-primary'}" type="button" id="confirmRoleGrant" ${!p || waiting || p.administrator || model.state.demo ? 'disabled' : ''}>${icon('check')} ${t('confirm')}</button></div>`);
+  function roster() {
+    const list = $('#roleMemberList'),
+      query = d.search.toLocaleLowerCase();
+    list.innerHTML = d.loadingMembers
+      ? '<p>' + t('loading') + '</p>'
+      : d.members
+          .filter((m) => (m.name + ' ' + m.id).toLocaleLowerCase().includes(query))
+          .map(
+            (m) =>
+              '<div class="role-member-row"><div translate="no"><strong>' +
+              esc(m.name) +
+              '</strong><code>' +
+              esc(m.id) +
+              '</code></div><button type="button" class="btn btn-small btn-danger" data-remove-member="' +
+              esc(m.id) +
+              '" ' +
+              (!m.removable || waiting ? 'disabled' : '') +
+              '>' +
+              icon('trash') +
+              ' ' +
+              (m.removable ? t('remove') : t('locked')) +
+              '</button></div>',
+          )
+          .join('') || (d.membersLoaded ? '<p>' + t('empty') + '</p>' : '');
+    list.querySelectorAll('[data-remove-member]').forEach(
+      (button) =>
+        (button.onclick = () => {
+          d.memberId = button.dataset.removeMember;
+          d.operation = 'remove';
+          d.plan = null;
+          renderRoleGrantDialog();
+          $('#previewRoleGrant').click();
+        }),
+    );
+  }
+  roster();
+  $('#roleMemberSearch').oninput = (e) => {
+    d.search = e.target.value;
+    roster();
+  };
+  $('#reloadRoleMembers').onclick = () => loadRoleMembers('0');
+  $('#moreRoleMembers').onclick = () => loadRoleMembers(d.next);
+  for (const [id, operation] of [
+    ['memberGrantMode', 'grant'],
+    ['memberRemoveMode', 'remove'],
+  ])
+    $('#' + id).onclick = () => {
+      d.operation = operation;
+      d.plan = null;
+      renderRoleGrantDialog();
+    };
   const input = $('#grantMemberId');
   input.oninput = () => {
     d.memberId = input.value.replace(/\D/g, '');
@@ -1998,16 +2112,18 @@ function renderRoleGrantDialog(error = '') {
     }
   };
   $('#previewRoleGrant').onclick = () => {
-    if (busy() || d.pending) return;
+    if (busy() || waiting) return;
     if (!/^\d{16,22}$/.test(d.memberId)) {
-      toast('أدخل معرّف عضو صحيحًا من السيرفر.', 'error');
+      toast(t('missing'), 'error');
       input.focus();
       return;
     }
     d.plan = null;
     d.pending = true;
     renderRoleGrantDialog();
-    action('role-grant-preview', { roleGrantRequest: { roleId: d.roleId, memberId: d.memberId } });
+    action('role-grant-preview', {
+      roleGrantRequest: { roleId: d.roleId, memberId: d.memberId, operation: d.operation },
+    });
   };
   const ack = $('#grantAdminAck');
   if (ack)
@@ -2022,6 +2138,7 @@ function renderRoleGrantDialog(error = '') {
       guildId: plan.guildId,
       roleId: plan.roleId,
       memberId: plan.memberId,
+      operation: plan.operation ?? 'grant',
       approvalHash: plan.approvalHash,
       acknowledgeAdmin: ack?.checked === true,
     };

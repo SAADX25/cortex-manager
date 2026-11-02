@@ -2,7 +2,12 @@ import { previewBatch, applyBatch, batchPublic } from './batch-editor.mjs';
 import { readPermissionSimulation } from './permission-simulator.mjs';
 import fs from 'node:fs';
 import { validateCustomDesign } from './custom-design.mjs';
-import { previewRoleGrant, applyRoleGrant, roleGrantPublic } from './role-grants.mjs';
+import {
+  previewRoleGrant,
+  applyRoleGrant,
+  roleGrantPublic,
+  readRoleMembers,
+} from './role-grants.mjs';
 import readline from 'node:readline';
 import { pathToFileURL } from 'node:url';
 import { DiscordAPI, snapshot } from './api.mjs';
@@ -159,6 +164,13 @@ export async function runDesktopWorker(
       config.simulationRequest,
     );
     emit({ event: 'permission-simulation', data: result });
+    return;
+  }
+  if (mode === 'role-members') {
+    emit({
+      event: 'role-members',
+      data: await readRoleMembers(new DiscordAPI(token), guildId, config.roleMembersRequest),
+    });
     return;
   }
   if (mode === 'role-grant-preview') {

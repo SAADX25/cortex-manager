@@ -16,7 +16,7 @@ export function gatewayURL(value) {
 }
 const fatalCodes = new Set([4004, 4010, 4011, 4012, 4013, 4014]);
 
-// Presence-only connection: no message/member intents, no moderation commands,
+// Presence by default; member/audit events are opt-in. No moderation commands,
 // and no dependency on the rebuild process staying active.
 export class GatewaySession extends EventEmitter {
   constructor(
@@ -31,7 +31,7 @@ export class GatewaySession extends EventEmitter {
     } = {},
   ) {
     super();
-    if (![0, 3].includes(intents)) throw new Error('Unsupported Gateway intents.');
+    if (![0, 3, 7].includes(intents)) throw new Error('Unsupported Gateway intents.');
     this.intents = intents;
     this.token = token;
     this.api = api;
@@ -196,7 +196,7 @@ export class GatewaySession extends EventEmitter {
     if (packet.s !== null && packet.s !== undefined) this.sequence = packet.s;
     if (
       packet.op === 0 &&
-      this.intents === 3 &&
+      [3, 7].includes(this.intents) &&
       this.session &&
       ['GUILD_MEMBER_ADD', 'GUILD_MEMBER_REMOVE'].includes(packet.t)
     )
@@ -207,6 +207,13 @@ export class GatewaySession extends EventEmitter {
         session: this.session,
         sequence: packet.s,
       });
+    if (
+      packet.op === 0 &&
+      this.intents === 7 &&
+      this.session &&
+      packet.t === 'GUILD_AUDIT_LOG_ENTRY_CREATE'
+    )
+      this.emit('audit-event', packet.d);
     if (packet.op === 10) {
       const interval = packet.d?.heartbeat_interval;
       if (!Number.isFinite(interval) || interval < 1000)

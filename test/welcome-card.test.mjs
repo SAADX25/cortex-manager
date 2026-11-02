@@ -72,3 +72,42 @@ test('decorated Latin server names normalize to readable equivalent glyphs on th
     decorated = await renderWelcomeCard(settings(), { user: '𝘚𝘈𝘈𝘋', server: '𝘈𝘣𝘰 𝘈𝘭𝘶𝘧 𝘚𝘦𝘳𝘷𝘦𝘳' });
   assert.ok(normal.equals(decorated));
 });
+
+test('welcome backgrounds are clipped to the colored outer frame with transparent rounded corners', async () => {
+  const { createCanvas, loadImage } = await import('@napi-rs/canvas');
+  const source = createCanvas(80, 80),
+    sourceContext = source.getContext('2d');
+  sourceContext.fillStyle = '#ffff00';
+  sourceContext.fillRect(0, 0, 80, 80);
+  const config = settings();
+  config.card.background = 'none';
+  config.color = '#2255ff';
+  const bytes = await renderWelcomeCard(
+    config,
+    { user: 'Test', server: 'Example' },
+    { background: await source.encode('png') },
+  );
+  const output = createCanvas(1000, 440),
+    ctx = output.getContext('2d');
+  ctx.drawImage(await loadImage(bytes), 0, 0);
+  const pixel = (x, y) => Array.from(ctx.getImageData(x, y, 1, 1).data);
+  for (const [x, y] of [
+    [0, 0],
+    [999, 0],
+    [0, 439],
+    [999, 439],
+  ])
+    assert.equal(pixel(x, y)[3], 0);
+  for (const [x, y] of [
+    [500, 1],
+    [1, 220],
+    [998, 220],
+    [500, 438],
+  ])
+    assert.deepEqual(pixel(x, y), [34, 85, 255, 255]);
+  assert.equal(pixel(500, 8)[3], 255);
+  source.width = 1;
+  source.height = 1;
+  output.width = 1;
+  output.height = 1;
+});

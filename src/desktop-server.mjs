@@ -38,6 +38,7 @@ const ACTIONS = new Set([
   'batch-preview',
   'batch-apply',
   'permission-simulate',
+  'role-members',
   'role-grant-preview',
   'role-grant-apply',
   'message-preview',
@@ -377,6 +378,7 @@ export async function createDesktopServer({
     batchPreview: null,
     batchResult: null,
     simulation: null,
+    roleMembers: null,
     roleGrantPreview: null,
     preview: null,
     editPreview: null,
@@ -448,6 +450,7 @@ export async function createDesktopServer({
   const invalidate = () => {
     state.batchPreview = null;
     state.roleGrantPreview = null;
+    state.roleMembers = null;
     state.preview = null;
     state.editPreview = null;
     state.messagePreview = null;
@@ -510,13 +513,20 @@ export async function createDesktopServer({
       if (state.online && state.presenceStartedAt === null) state.presenceStartedAt = Date.now();
       state.status = state.online ? 'online' : event.status;
       log(event.message ?? event.status, event.status === 'error' ? 'error' : 'info');
+    } else if (event.event === 'role-members') {
+      state.roleMembers = event.data;
     } else if (event.event === 'role-grant-preview') {
       state.roleGrantPreview = event.data;
       log('معاينة منح الرتبة جاهزة؛ لم تتغير رتب العضو.');
     } else if (event.event === 'role-granted') {
       state.roleGrantPreview = null;
       state.result = event.data;
-      log('تم منح الرتبة للعضو المحدد.', 'success');
+      log(
+        event.data.operation === 'remove'
+          ? 'تمت إزالة الرتبة من العضو المحدد.'
+          : 'تم منح الرتبة للعضو المحدد.',
+        'success',
+      );
     } else if (event.event === 'edit-preview') {
       state.editPreview = event.data;
       log('معاينة التعديل جاهزة للمراجعة.');
@@ -807,6 +817,19 @@ export async function createDesktopServer({
         log('معاينة توضيحية؛ لا يمكن تنفيذ إعادة بناء في وضع العرض.');
         return;
       }
+      if (name === 'role-members') {
+        const roleId = config.roleMembersRequest?.roleId;
+        state.roleMembers = {
+          guildId: demoSnapshot.guild.id,
+          roleId,
+          after: '0',
+          next: null,
+          members: demoSnapshot.members
+            .filter((m) => m.roles.includes(roleId))
+            .map((m) => ({ id: m.id, name: m.id, removable: false })),
+        };
+        return;
+      }
       if (name === 'role-grant-preview') {
         invalidate();
         const member = demoSnapshot.members.find((m) => m.id === config.roleGrantRequest?.memberId);
@@ -906,6 +929,7 @@ export async function createDesktopServer({
         c.approvalHash !== p.approvalHash ||
         c.memberId !== p.memberId ||
         c.roleId !== p.roleId ||
+        (c.operation ?? 'grant') !== (p.operation ?? 'grant') ||
         (p.administrator && c.acknowledgeAdmin !== true)
       )
         throw new Error('راجع العضو والرتبة وأكّد المعاينة نفسها.');
@@ -964,6 +988,7 @@ export async function createDesktopServer({
       ...(name === 'batch-preview' ? { batchRequests: config.batchRequests } : {}),
       ...(name === 'batch-apply' ? { batchConfirmation: config.batchConfirmation } : {}),
       ...(name === 'permission-simulate' ? { simulationRequest: config.simulationRequest } : {}),
+      ...(name === 'role-members' ? { roleMembersRequest: config.roleMembersRequest } : {}),
       ...(name === 'role-grant-preview' ? { roleGrantRequest: config.roleGrantRequest } : {}),
       ...(name === 'role-grant-apply'
         ? { roleGrantConfirmation: config.roleGrantConfirmation }

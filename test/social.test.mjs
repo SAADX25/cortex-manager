@@ -697,3 +697,47 @@ test('host signals stop once, exit cleanly and distinguish fatal failures withou
   assert.ok(!JSON.stringify(logs).includes('SECRET'));
   failed.dispose();
 });
+
+test('laith1x Kick provider-to-delivery flow announces a new live session once and survives restart', async (t) => {
+  const h = harness(t);
+  let clock = Date.parse('2026-11-01T10:00:00Z'),
+    live = false;
+  const started = new Date(clock + 30000).toISOString(),
+    f = feed({ platform: 'kick', source: 'laith1x', language: 'en' });
+  const fetchItems = createSocialProviders({
+    env: { KICK_CLIENT_ID: 'mock-id', KICK_CLIENT_SECRET: 'mock-secret' },
+    now: () => clock,
+    fetchImpl: async (url) => {
+      if (url === 'https://id.kick.com/oauth/token')
+        return new Response(JSON.stringify({ access_token: 'mock-token', expires_in: 3600 }));
+      assert.equal(url, 'https://api.kick.com/public/v1/channels?slug=laith1x');
+      return new Response(
+        JSON.stringify({
+          data: [
+            {
+              slug: 'laith1x',
+              stream_title: 'LAITH is live',
+              stream: { is_live: live, start_time: live ? started : '' },
+            },
+          ],
+        }),
+      );
+    },
+  });
+  const options = { api: h.api, stateFile: h.stateFile, fetchItems, now: () => clock };
+  const engine = createSocialEngine(options);
+  await engine.tick(config([f]));
+  assert.equal(h.server.calls.length, 0);
+  live = true;
+  clock += 120001;
+  await engine.tick(config([f]));
+  assert.equal(h.server.calls.length, 1);
+  assert.equal(h.server.calls[0].path, '/channels/' + f.channelId + '/messages');
+  assert.match(h.server.calls[0].body.content, /https:\/\/kick.com\/laith1x/);
+  clock += 120001;
+  await engine.tick(config([f]));
+  assert.equal(h.server.calls.length, 1);
+  clock += 120001;
+  await createSocialEngine(options).tick(config([f]));
+  assert.equal(h.server.calls.length, 1);
+});

@@ -111,6 +111,11 @@ export function fakeServer(initial, { beforeCall = () => {}, onCapture = () => {
       }
       if (method === 'POST' && path.endsWith('/messages')) return { id: String(next++) };
       const assignment = path.match(/\/members\/(\d+)\/roles\/(\d+)$/);
+      if (method === 'DELETE' && assignment) {
+        const member = state.members.find((m) => m.id === assignment[1]);
+        member.roles = member.roles.filter((id) => id !== assignment[2]);
+        return null;
+      }
       if (method === 'PUT' && assignment) {
         const member = state.members.find((m) => m.id === assignment[1]);
         member.roles.push(assignment[2]);

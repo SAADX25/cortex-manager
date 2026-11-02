@@ -216,3 +216,37 @@ test('image cards send a PNG attachment once and fall back safely if rendering f
   assert.ok(statuses.some((e) => e.code === 'CARD_RENDER_FAILED_FALLBACK'));
   assert.ok(!JSON.stringify(statuses).includes('private renderer details'));
 });
+
+test('welcome validation identifies the section and field while disabled image drafts save without a destination', (t) => {
+  const root = temp(t),
+    store = createWelcomeStore({ root }),
+    first = store.read(),
+    g = welcomeDefaults(ID);
+  g.join.card = {
+    mode: 'image',
+    background: 'none',
+    titleColor: '#ffffff',
+    textColor: '#ffffff',
+    overlay: 0.66,
+  };
+  const saved = store.save({ config: { version: 1, guilds: [g] }, baseRevision: first.revision });
+  assert.equal(saved.config.guilds[0].join.card.mode, 'image');
+  assert.equal(saved.config.guilds[0].join.channelId, '');
+  for (const type of ['join', 'leave']) {
+    const d = config();
+    d.guilds[0][type].channelId = '';
+    assert.throws(
+      () => validateWelcome(d),
+      (e) => e.welcomeType === type && e.field === 'channelId',
+    );
+  }
+  for (const field of ['title', 'message', 'color']) {
+    const d = config();
+    d.guilds[0].leave[field] = '';
+    assert.throws(
+      () => validateWelcome(d),
+      (e) => e.welcomeType === 'leave' && e.field === field,
+    );
+  }
+  assert.equal(store.read().revision, saved.revision);
+});

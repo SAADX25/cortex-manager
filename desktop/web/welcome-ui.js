@@ -5,6 +5,7 @@
     saving = false,
     error = '',
     loaded = false;
+  let validationIssue = null;
   const drafts = new Map(),
     imagePreviews = new Map();
   let previewBusy = false,
@@ -68,6 +69,47 @@
       color: '#f19b73',
     },
   });
+  function validateDraft(d) {
+    for (const type of ['join', 'leave']) {
+      const value = d[type];
+      if (
+        typeof value.channelId !== 'string' ||
+        (value.channelId !== '' && !/^\d{16,22}$/.test(value.channelId)) ||
+        (value.enabled && !/^\d{16,22}$/.test(value.channelId))
+      )
+        return { type, control: 'Channel', key: 'welcome.validation_channel' };
+      if (!value.title?.trim() || value.title.length > 100)
+        return { type, control: 'Title', key: 'welcome.validation_title' };
+      if (!value.message?.trim() || value.message.length > 1200)
+        return { type, control: 'Message', key: 'welcome.validation_message' };
+      if (!/^#[a-f0-9]{6}$/i.test(value.color ?? ''))
+        return { type, control: 'Color', key: 'welcome.validation_color' };
+    }
+    if (d.kick?.enabled && !/^\d{16,22}$/.test(d.kick.channelId))
+      return { type: 'kick', control: 'Channel', key: 'kick.validation_channel' };
+    return null;
+  }
+  function checkBeforeSave(d) {
+    validationIssue = validateDraft(d);
+    if (!validationIssue) return true;
+    validationIssue.guildId = d.guildId;
+    draw();
+    const issue = validationIssue;
+    const node = $('#welcome' + issue.control + issue.type);
+    node?.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
+    node?.focus?.();
+    toast(
+      (issue.type === 'kick'
+        ? t('kick.title')
+        : issue.type === 'join'
+          ? t('welcome.welcome')
+          : t('welcome.farewell')) +
+        ': ' +
+        t(issue.key),
+      'error',
+    );
+    return false;
+  }
   function draft() {
     const id = guildId();
     if (!drafts.has(id))
@@ -75,7 +117,9 @@
         id,
         structuredClone(saved?.config.guilds.find((g) => g.guildId === id) ?? defaults(id)),
       );
-    return drafts.get(id);
+    const value = drafts.get(id);
+    value.kick ??= { enabled: false, channelId: '', language: en() ? 'en' : 'ar' };
+    return value;
   }
   async function load() {
     loading = true;
@@ -118,11 +162,57 @@
     if (target)
       target.innerHTML = `<div class="welcome-preview-label">${t('welcome.local_preview_no_message_sent')}</div><div class="welcome-card" style="--welcome-color:${/^#[a-f0-9]{6}$/i.test(d.color) ? d.color : '#9888ff'}"><div><strong dir="auto">${esc(text(d.title, language))}</strong><p dir="auto">${esc(text(d.message, language))}</p></div><div class="welcome-avatar">${icon('users')}</div></div>`;
   }
+  function kickMarkup(d, rooms) {
+    const k = d.kick;
+    return (
+      '<section class="panel kick-settings"><div class="panel-header"><h2>' +
+      icon('shield') +
+      t('kick.title') +
+      '</h2><label class="welcome-enable"><input type="checkbox" id="kickEnabled" ' +
+      (k.enabled ? 'checked' : '') +
+      '>' +
+      t('ui.enable') +
+      '</label></div><div class="panel-body"><p class="field-help">' +
+      t('kick.description') +
+      '</p><div class="kick-settings-grid"><div class="field"><label for="welcomeChannelkick">' +
+      t('kick.channel') +
+      '</label><select id="welcomeChannelkick"><option value="">' +
+      t('welcome.choose_a_channel') +
+      '</option>' +
+      (!rooms.some((c) => c.id === k.channelId) && k.channelId
+        ? '<option selected value="' + esc(k.channelId) + '"># ' + esc(k.channelId) + '</option>'
+        : '') +
+      rooms
+        .map(
+          (c) =>
+            '<option value="' +
+            esc(c.id) +
+            '" ' +
+            (c.id === k.channelId ? 'selected' : '') +
+            ' translate="no"># ' +
+            esc(c.name) +
+            '</option>',
+        )
+        .join('') +
+      '</select></div><div class="field"><label for="kickLanguage">' +
+      t('kick.language') +
+      '</label><select id="kickLanguage"><option value="ar" ' +
+      (k.language === 'ar' ? 'selected' : '') +
+      '>العربية</option><option value="en" ' +
+      (k.language === 'en' ? 'selected' : '') +
+      '>English</option></select></div></div><div class="notice">' +
+      icon('eye') +
+      '<div>' +
+      t('kick.permissions') +
+      '</div></div></div></section>'
+    );
+  }
   function draw() {
     if (!saved && !loading && !loaded && !error) {
       void load();
     }
     const d = draft();
+    if (validationIssue && validationIssue.guildId !== d.guildId) validationIssue = null;
     if (!libraries.has(d.guildId)) void loadLibrary(d.guildId);
     const library = libraries.get(d.guildId) ?? { assets: [], loading: false, error: '' },
       rooms = inventory()?.channels.filter((c) => [0, 2, 5].includes(Number(c.type))) ?? [];
@@ -137,7 +227,19 @@
         })
         .join(
           '',
-        )}</div><div class="panel welcome-actions"><p>${t('welcome.preview_sends_nothing_to_discord_settings_apply_on_the_host_after_updati')}</p><button class="btn btn-primary" id="saveWelcome" ${saving || uploading || loading || !saved ? 'disabled' : ''}>${icon('check')}${saving ? t('social.saving') : t('welcome.save_settings')}</button><button class="btn btn-ghost" id="exportWelcome" ${!saved || saving ? 'disabled' : ''}>${icon('log')}${t('social.download_discloud_package')}</button></div></div>`;
+        )}</div>${kickMarkup(d, rooms)}<div class="panel welcome-actions">${validationIssue ? '<p class="welcome-validation-error" role="alert">' + esc((validationIssue.type === 'kick' ? t('kick.title') : validationIssue.type === 'join' ? t('welcome.welcome') : t('welcome.farewell')) + ': ' + t(validationIssue.key)) + '</p>' : ''}<p>${t('welcome.preview_sends_nothing_to_discord_settings_apply_on_the_host_after_updati')}</p><button class="btn btn-primary" id="saveWelcome" ${saving || uploading || loading || !saved ? 'disabled' : ''}>${icon('check')}${saving ? t('social.saving') : t('welcome.save_settings')}</button><button class="btn btn-ghost" id="exportWelcome" ${!saved || saving ? 'disabled' : ''}>${icon('log')}${t('social.download_discloud_package')}</button></div></div>`;
+    for (const id of ['kickEnabled', 'welcomeChannelkick', 'kickLanguage'])
+      $('#' + id).disabled = saving || loading || !saved;
+    $('#welcomeChannelkick').setAttribute('aria-invalid', String(validationIssue?.type === 'kick'));
+    $('#kickEnabled').onchange = () => {
+      d.kick.enabled = $('#kickEnabled').checked;
+    };
+    $('#welcomeChannelkick').onchange = () => {
+      d.kick.channelId = $('#welcomeChannelkick').value;
+    };
+    $('#kickLanguage').onchange = () => {
+      d.kick.language = $('#kickLanguage').value;
+    };
     for (const type of ['join', 'leave']) {
       preview(type);
       for (const [key, name] of [
@@ -149,6 +251,10 @@
       ]) {
         const node = $('#welcome' + name + type);
         node.disabled = saving || loading || !saved;
+        node.setAttribute(
+          'aria-invalid',
+          String(validationIssue?.type === type && validationIssue?.control === name),
+        );
         node.oninput = () => {
           d[type][key] = key === 'enabled' ? node.checked : node.value;
           preview(type);
@@ -316,11 +422,13 @@
     $('#retryWelcome')?.addEventListener('click', () => void load());
     $('#saveWelcome').onclick = () => {
       if (saving || uploading || !saved) return;
+      if (!checkBeforeSave(d)) return;
       showDialog(
-        `<div translate="no"><h2>${t('welcome.save_welcome_and_farewell_messages')}</h2><p>${esc(guildName())}</p>${['join', 'leave'].map((type) => `<p>${type === 'join' ? t('welcome.welcome') : t('welcome.farewell')}: ${d[type].enabled ? '# ' + esc(rooms.find((c) => c.id === d[type].channelId)?.name ?? d[type].channelId) : t('welcome.disabled')}</p>`).join('')}<p>${t('welcome.enabled_messages_will_be_sent_automatically_after_deploying_the_package')}</p><div class="dialog-actions"><button class="btn btn-ghost" value="cancel">${t('ui.cancel')}</button><button type="button" class="btn btn-primary" id="confirmWelcomeSave">${t('social.approve_save')}</button></div></div>`,
+        `<div translate="no"><h2>${t('welcome.save_welcome_and_farewell_messages')}</h2><p>${esc(guildName())}</p>${['join', 'leave'].map((type) => `<p>${type === 'join' ? t('welcome.welcome') : t('welcome.farewell')}: ${d[type].enabled ? '# ' + esc(rooms.find((c) => c.id === d[type].channelId)?.name ?? d[type].channelId) : t('welcome.disabled')}</p>`).join('')}<p>${t('kick.title')}: ${d.kick.enabled ? '# ' + esc(rooms.find((c) => c.id === d.kick.channelId)?.name ?? d.kick.channelId) : t('welcome.disabled')}</p><p>${t('welcome.enabled_messages_will_be_sent_automatically_after_deploying_the_package')}</p><div class="dialog-actions"><button class="btn btn-ghost" value="cancel">${t('ui.cancel')}</button><button type="button" class="btn btn-primary" id="confirmWelcomeSave">${t('social.approve_save')}</button></div></div>`,
       );
       $('#confirmWelcomeSave').onclick = async () => {
         if (saving || uploading) return;
+        if (!checkBeforeSave(d)) return;
         const config = {
           version: 1,
           guilds: [

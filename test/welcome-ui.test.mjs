@@ -24,6 +24,12 @@ test('welcome UI previews without sending and saves only after explicit confirma
           disabled: false,
           innerHTML: '',
           addEventListener() {},
+          attributes: {},
+          setAttribute(k, v) {
+            this.attributes[k] = v;
+          },
+          focus() {},
+          scrollIntoView() {},
           close() {},
         });
       return nodes.get(id);
@@ -138,13 +144,35 @@ test('welcome UI previews without sending and saves only after explicit confirma
   assert.ok(node('#welcomePreviewjoin').innerHTML.includes('Hello New member'));
   node('#welcomeEnabledjoin').checked = true;
   node('#welcomeEnabledjoin').oninput();
+  const oldDialog = dialog;
+  node('#saveWelcome').onclick();
+  assert.equal(posts, 0);
+  assert.equal(dialog, oldDialog);
+  assert.ok(html.includes('Choose a destination for this section'));
+  assert.equal(node('#welcomeChanneljoin').attributes['aria-invalid'], 'true');
+  assert.ok(html.includes('Uploaded.png'));
+  assert.ok(html.includes('#123456'));
   node('#welcomeChanneljoin').value = '777777777777777777';
   node('#welcomeChanneljoin').oninput();
+  node('#kickEnabled').checked = true;
+  node('#kickEnabled').onchange();
+  const beforeKick = dialog;
+  node('#saveWelcome').onclick();
+  assert.equal(dialog, beforeKick);
+  assert.equal(posts, 0);
+  assert.ok(html.includes('Choose a kick log channel'));
+  node('#welcomeChannelkick').value = '777777777777777779';
+  node('#welcomeChannelkick').onchange();
+  node('#kickLanguage').value = 'en';
+  node('#kickLanguage').onchange();
   node('#saveWelcome').onclick();
   assert.equal(posts, 0);
   assert.ok(dialog.includes('Approve & save'));
   await node('#confirmWelcomeSave').onclick();
   assert.equal(posts, 1);
+  assert.equal(savedBody.config.guilds[0].kick.enabled, true);
+  assert.equal(savedBody.config.guilds[0].kick.channelId, '777777777777777779');
+  assert.equal(savedBody.config.guilds[0].kick.language, 'en');
   assert.equal(savedBody.confirmAutomatic, true);
   assert.equal(savedBody.config.guilds[0].join.channelId, '777777777777777777');
   assert.equal(savedBody.config.guilds[0].leave.enabled, false);

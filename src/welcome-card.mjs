@@ -85,6 +85,11 @@ export async function renderWelcomeCard(settings, details, { avatar, background 
     embed.title = embed.title.normalize('NFKC');
     embed.description = embed.description.normalize('NFKC');
     surface = canvas;
+    // One shared rounded silhouette: background, overlays and content cannot escape the frame.
+    ctx.save();
+    ctx.beginPath();
+    ctx.roundRect(0, 0, 1000, 440, 26);
+    ctx.clip();
     ctx.fillStyle = '#141c30';
     ctx.fillRect(0, 0, 1000, 440);
     if (!background && /^[a-f0-9]{64}$/.test(style.background)) {
@@ -114,7 +119,7 @@ export async function renderWelcomeCard(settings, details, { avatar, background 
     ctx.strokeStyle = settings.color;
     ctx.lineWidth = 4;
     ctx.beginPath();
-    ctx.roundRect(18, 18, 964, 404, 20);
+    ctx.roundRect(2, 2, 996, 436, 24);
     ctx.stroke();
     const rtl = /\p{Script=Arabic}/u.test(embed.title + ' ' + embed.description),
       cx = rtl ? 850 : 150,
@@ -163,16 +168,23 @@ export async function renderWelcomeCard(settings, details, { avatar, background 
     ctx.shadowColor = '#000000bb';
     ctx.shadowBlur = 5;
     ctx.font = '700 50px ' + family;
-    const title = lines(ctx, embed.title, width, 2);
+    const structured = Array.isArray(details.rows) ? details.rows.slice(0, 3) : null;
+    const title = lines(ctx, embed.title, width, structured ? 1 : 2);
     ctx.font = '400 36px ' + family;
-    const body = lines(ctx, embed.description, width, 4);
-    const top = Math.max(28, (440 - (title.length * 70 + 24 + body.length * 53)) / 2);
+    const bodySize = structured ? 27 : 36,
+      lineHeight = structured ? 38 : 53;
+    ctx.font = '400 ' + bodySize + 'px ' + family;
+    const body = structured
+      ? structured.flatMap((row) => lines(ctx, String(row).normalize('NFKC'), width, 2))
+      : lines(ctx, embed.description, width, 4);
+    const top = Math.max(28, (440 - (title.length * 70 + 24 + body.length * lineHeight)) / 2);
     ctx.font = '700 50px ' + family;
     ctx.fillStyle = style.titleColor;
     title.forEach((line, i) => ctx.fillText(line, x, top + 54 + i * 70));
-    ctx.font = '400 36px ' + family;
+    ctx.font = '400 ' + bodySize + 'px ' + family;
     ctx.fillStyle = style.textColor;
-    body.forEach((line, i) => ctx.fillText(line, x, top + title.length * 70 + 64 + i * 53));
+    body.forEach((line, i) => ctx.fillText(line, x, top + title.length * 70 + 64 + i * lineHeight));
+    ctx.restore();
     const bytes = await canvas.encode('png');
     if (bytes.length > 2000000) throw new Error('Welcome card exceeds image size limit.');
     return bytes;

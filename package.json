@@ -15,7 +15,8 @@
     "desktop:test": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File desktop/Test.ps1",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "check": "npm run format:check && node scripts/check.mjs"
+    "check": "npm run format:check && node scripts/check.mjs",
+    "discloud:build": "node scripts/build-discloud.mjs"
   },
   "engines": {
     "node": ">=22.9"

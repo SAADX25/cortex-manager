@@ -36,7 +36,7 @@ Configure sources and text destinations in the desktop Social section; save with
 - Kick: official API live-start notifications; requires KICK_CLIENT_ID and KICK_CLIENT_SECRET from your Kick developer application. Clips can be posted manually.
 - Instagram: public account posts/Reels through a configured rssURL from RSS.app (no Meta credentials), or an authorized Business/Creator account using INSTAGRAM_USER_ID and INSTAGRAM_ACCESS_TOKEN with instagram_business_basic. Posts/Reels only, not arbitrary personal accounts, Stories or live streams. Refresh expiring credentials at the host.
 
-Grant the Discord bot View Channel and Send Messages in selected text/announcement channels. Administrator is unnecessary. No member intents, moderation operations or server redesign actions run in the hosted service. All outbound mentions are disabled.
+Grant the Discord bot View Channel and Send Messages in selected text/announcement channels. Administrator is unnecessary. Social-only configurations need no member intents. No moderation operations or server redesign actions run in the hosted service. All outbound mentions are disabled.
 
 Polling is sequential, roughly every two minutes, with provider backoff. The first successful fetch records a baseline without sending existing items, including an already-live stream. Keep data/social-deliveries.json across restarts and deployments. Each message is durably reserved before sending; uncertain attempts are not retried. Check Discord before manually reposting an unknown delivery. Catch-up is capped at the newest five events per source. State is per instance, not a distributed lock; never deploy two copies for the same destinations.
 
@@ -63,7 +63,7 @@ The exported discloud.config starts Node directly (START=node --env-file-if-exis
 
 ## Welcome and farewell / الترحيب والمغادرة
 
-Open Welcome & farewell in the Windows app, select a text channel for each event, edit its title/message/color and review the local card. {user} inserts the member name and {server} the server name. Use the preset button for Arabic/English text. Confirm saving automatic messages, export the package and update the existing Discloud app. Unsaved edits are not exported. No additional environment variable is needed. Enable Server Members Intent under Developer Portal → your Discord application → Bot before deploying enabled welcome settings. The hosted Gateway requests GUILDS + GUILD_MEMBERS only when at least one welcome/farewell rule is enabled; desktop presence keeps zero intents. If Discord closes with 4014, check that privileged intent.
+Open Welcome & farewell in the Windows app, select a text channel for each event, edit its title/message/color and review the local card. {user} inserts the member name and {server} the server name. Use the preset button for Arabic/English text. Confirm saving automatic messages, export the package and update the existing Discloud app. Unsaved edits are not exported. No additional environment variable is needed. Enable Server Members Intent under Developer Portal → your Discord application → Bot before deploying enabled welcome settings. The hosted Gateway requests GUILDS + GUILD_MEMBERS when membership notifications are enabled, and additionally GUILD_MODERATION for enabled kick notifications; desktop presence keeps zero intents. If Discord closes with 4014, check that privileged intent.
 
 Requires View Channel, Send Messages and Embed Links in the selected rooms. Actual messages include the available Discord member avatar. No live test is sent by the preview. Only future GUILD_MEMBER_ADD/REMOVE events trigger delivery; startup member lists are ignored, bot accounts are skipped when identified, and farewell does not claim whether someone left voluntarily, was kicked or banned. Dedupe reserves events before sending; uncertain deliveries are not retried. Keep data/welcome-deliveries.json across updates. Run only one instance with welcome enabled. Existing social notifications remain independent.
 
@@ -88,3 +88,21 @@ Arabic, Latin and emoji fonts are bundled with OFL licenses. Names with mathemat
 ### Readable Discord image layout
 
 Image welcome/farewell cards use a compact 1000x440 canvas with larger title/body text and vertical placement based on the wrapped lines. They are sent as direct PNG attachments, without an additional image Embed wrapper; the regular Embed remains only a fallback. This removes the extra colored outer strip while keeping the user-selected border within the image. Existing posted messages are not edited.
+
+## Quick local package command
+
+Save your settings in the desktop app, then run `npm run discloud:build` from the project folder. The command validates saved settings and hosted JavaScript, packages selected background images, and writes `out/discloud/cortex-manager.zip` plus a nonsecret verification report. It reads no saved token and performs no network requests or deployment. Existing sources and welcome configurations for all saved servers are included.
+
+Upload the ZIP through **Commit** on the existing Discloud application. Preserve environment variables and the persistent `data/` directory. Kick requires `KICK_CLIENT_ID` and `KICK_CLIENT_SECRET` in addition to `DISCORD_BOT_TOKEN`. Welcome events require Server Members Intent. New streams are checked every two minutes; the first successful check establishes a silent baseline, so an already-running stream is not announced as new. Local validation and mocked tests do not verify production credentials or actual Discord delivery.
+
+## Confirmed kick notifications
+
+In Welcome & farewell, enable Kick notifications, choose a private staff text/announcement channel and select Arabic or English. Save explicitly, export a fresh package and deploy to the existing app. Existing settings default to disabled; no room is selected automatically. Grant View Audit Log plus View Channel, Send Messages and Embed Links in the chosen channel. Keep Server Members Intent enabled. Kick Members and Administrator are unnecessary.
+
+Only future Discord audit Gateway events with action type MEMBER_KICK produce the report: member, acting moderator, recorded reason and event time. Failed user lookups fall back to the numeric ID; absent actors are shown as unavailable. Bans and voluntary departures are never labelled as kicks. This is logging only and cannot kick or ban anyone. The ordinary farewell waits up to 2.5 seconds for a matching audit event; unusually late audit events can still produce both messages.
+
+Keep data/kick-deliveries.json with the existing data files across updates. Durable reservations and nonces avoid replaying confirmed or uncertain sends. Run one hosted notification instance. Missing permissions are reported as kick-log warnings; no permissions are granted automatically. No new environment variables are required.
+
+العربي: فعّل «إشعارات الطرد» وحدد غرفة للإدارة ولغة الإشعار ثم احفظ وصدّر حزمة جديدة وارفعها إلى التطبيق الحالي. يلزم View Audit Log وصلاحيات إرسال الرسالة في الغرفة. لا تحتاج صلاحية الطرد. يظهر منفذ الطرد والسبب فقط من حدث سجل التدقيق المؤكد؛ لا ينسب البوت المغادرة العادية لشخص بالتخمين.
+
+Kick notifications now send a PNG using the same server farewell background and text colors, with a red frame and separate member/moderator/reason rows. Grant Attach Files. Long visual rows are shortened; the full recorded reason (up to the supported 1000-character input bound), actor IDs and event time accompany the attachment as text. Missing attachment permission or rendering failure falls back to the existing structured Embed. Preview images use fictional examples and never post to Discord. Export and redeploy after updating.

@@ -3,7 +3,7 @@ import path from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { snapshot } from './api.mjs';
 import { digest, roleProtection } from './safety.mjs';
-import { P, has, botPermissions } from './permissions.mjs';
+import { P, has, botPermissions, botTopPosition } from './permissions.mjs';
 const sourceHash = () =>
   digest(
     fs
@@ -16,22 +16,33 @@ export function prepareRoleGrant(s, request, member, nonce) {
   if (
     !request ||
     Array.isArray(request) ||
-    Object.keys(request).sort().join(',') !== 'memberId,roleId' ||
+    !['memberId,roleId', 'memberId,operation,roleId'].includes(
+      Object.keys(request).sort().join(','),
+    ) ||
+    (request.operation !== undefined && !['grant', 'remove'].includes(request.operation)) ||
     ![request.memberId, request.roleId].every(
       (id) => typeof id === 'string' && /^\d{16,22}$/.test(id),
     )
   )
     throw new Error('أدخل معرّف العضو والرتبة الصحيحين.');
   if (!has(botPermissions(s), P.ManageRoles))
-    throw new Error('يحتاج البوت صلاحية Manage Roles لمنح الرتبة.');
+    throw new Error('يحتاج البوت صلاحية Manage Roles لإدارة رتب الأعضاء.');
   const role = s.roles.find((r) => r.id === request.roleId);
   if (!role || roleProtection(s, role))
-    throw new Error('هذه الرتبة محمية أو أعلى من البوت ولا يمكن منحها من البرنامج.');
+    throw new Error('هذه الرتبة محمية أو أعلى من البوت ولا يمكن تغيير توزيعها من البرنامج.');
   if ((member?.user?.id ?? member?.id) !== request.memberId || !Array.isArray(member.roles))
     throw new Error('العضو غير موجود في السيرفر المحدد.');
   if (request.memberId === s.bot.id || member.user?.bot || member.bot)
     throw new Error('هذا الخيار مخصص للأعضاء؛ لا يغيّر رتب البوتات.');
-  if (member.roles.includes(role.id)) throw new Error('هذا العضو يمتلك الرتبة بالفعل.');
+  const operation = request.operation ?? 'grant';
+  if (operation === 'remove') {
+    if (!member.roles.includes(role.id)) throw new Error('العضو لا يحمل هذه الرتبة.');
+    if (
+      request.memberId === s.guild.owner_id ||
+      s.roles.some((r) => member.roles.includes(r.id) && r.position >= botTopPosition(s))
+    )
+      throw new Error('لا يمكن إزالة رتبة من مالك السيرفر أو عضو أعلى من البوت أو مساوٍ له.');
+  } else if (member.roles.includes(role.id)) throw new Error('هذا العضو يمتلك الرتبة بالفعل.');
   if (typeof nonce !== 'string' || !/^[a-f0-9]{24}$/.test(nonce))
     throw new Error('معاينة منح الرتبة غير صالحة.');
   const p = {
@@ -39,6 +50,7 @@ export function prepareRoleGrant(s, request, member, nonce) {
     guildName: s.guild.name,
     botId: s.bot.id,
     request,
+    operation,
     roleId: role.id,
     roleName: role.name,
     rolePermissions: role.permissions,
@@ -47,17 +59,20 @@ export function prepareRoleGrant(s, request, member, nonce) {
     memberName:
       member.nick ?? member.user?.global_name ?? member.user?.username ?? request.memberId,
     memberRoles: [...member.roles].sort(),
-    administrator: (BigInt(role.permissions) & P.Administrator) !== 0n,
+    administrator: operation === 'grant' && (BigInt(role.permissions) & P.Administrator) !== 0n,
     nonce,
     sourceHash: sourceHash(),
   };
   return { ...p, approvalHash: digest(p) };
 }
 export const roleGrantSummary = (p) =>
-  `السيرفر: ${p.guildName} (${p.guildId})\nالعضو: ${p.memberName} (${p.memberId})\nمنح الرتبة: ${p.roleName} (${p.roleId})\n${p.administrator ? 'تنبيه: هذه الرتبة تمنح صلاحية Administrator الكاملة.\n' : ''}تُضاف هذه الرتبة فقط. تبقى رتب العضو الحالية محفوظة.`;
+  p.operation === 'remove'
+    ? `السيرفر: ${p.guildName} (${p.guildId})\nالعضو: ${p.memberName} (${p.memberId})\nإزالة الرتبة: ${p.roleName} (${p.roleId})\nتُزال هذه الرتبة فقط. تبقى جميع رتب العضو الأخرى محفوظة.`
+    : `السيرفر: ${p.guildName} (${p.guildId})\nالعضو: ${p.memberName} (${p.memberId})\nمنح الرتبة: ${p.roleName} (${p.roleId})\n${p.administrator ? 'تنبيه: هذه الرتبة تمنح صلاحية Administrator الكاملة.\n' : ''}تُضاف هذه الرتبة فقط. تبقى رتب العضو الحالية محفوظة.`;
 export const roleGrantPublic = (p) => ({
   guildId: p.guildId,
   guildName: p.guildName,
+  operation: p.operation,
   roleId: p.roleId,
   roleName: p.roleName,
   memberId: p.memberId,
@@ -93,6 +108,7 @@ export async function applyRoleGrant(api, guildId, c, directory) {
     fs.readFileSync(path.join(directory, 'role-grant-plan.json'), 'utf8'),
   );
   if (
+    reviewed.operation !== (c.operation ?? 'grant') ||
     reviewed.guildId !== guildId ||
     reviewed.roleId !== c.roleId ||
     reviewed.memberId !== c.memberId ||
@@ -120,6 +136,7 @@ export async function applyRoleGrant(api, guildId, c, directory) {
     guildId,
     roleId: fresh.roleId,
     memberId: fresh.memberId,
+    operation: fresh.operation,
     approvalHash: fresh.approvalHash,
   };
   const record = () => {
@@ -129,9 +146,12 @@ export async function applyRoleGrant(api, guildId, c, directory) {
   };
   record();
   try {
-    await api.call('PUT', `/guilds/${guildId}/members/${fresh.memberId}/roles/${fresh.roleId}`);
+    await api.call(
+      fresh.operation === 'remove' ? 'DELETE' : 'PUT',
+      `/guilds/${guildId}/members/${fresh.memberId}/roles/${fresh.roleId}`,
+    );
     result.success = true;
-    result.status = 'granted';
+    result.status = fresh.operation === 'remove' ? 'removed' : 'granted';
     return result;
   } catch (e) {
     result.status = 'failed-or-unknown';
@@ -140,4 +160,58 @@ export async function applyRoleGrant(api, guildId, c, directory) {
   } finally {
     record();
   }
+}
+
+// One bounded member page per request; no member data is persisted in reports.
+export async function readRoleMembers(api, guildId, request) {
+  if (
+    !request ||
+    Array.isArray(request) ||
+    typeof request.roleId !== 'string' ||
+    (request.after !== undefined && typeof request.after !== 'string') ||
+    Object.keys(request).some((k) => !['roleId', 'after'].includes(k)) ||
+    !/^\d{16,22}$/.test(request.roleId ?? '') ||
+    (request.after !== undefined && request.after !== '0' && !/^\d{16,22}$/.test(request.after))
+  )
+    throw new Error('Invalid role member request.');
+  const after = request.after ?? '0';
+  const s = await snapshot(api, guildId, { includeMembers: false });
+  const role = s.roles.find((r) => r.id === request.roleId);
+  if (!role) throw new Error('Role no longer exists.');
+  let page;
+  try {
+    page = await api.get('/guilds/' + guildId + '/members?limit=1000&after=' + after);
+  } catch (error) {
+    if ([401, 403].includes(error.status))
+      throw new Error('Enable Server Members Intent to load role members.');
+    throw error;
+  }
+  if (
+    !Array.isArray(page) ||
+    page.length > 1000 ||
+    page.some((m) => !/^\d{16,22}$/.test(m.user?.id ?? '') || !Array.isArray(m.roles))
+  )
+    throw new Error('Invalid member page.');
+  const next = page.length === 1000 ? page.at(-1).user.id : null;
+  if (next && BigInt(next) <= BigInt(after)) throw new Error('Member pagination did not advance.');
+  return {
+    guildId,
+    roleId: role.id,
+    after,
+    next,
+    members: page
+      .filter((m) => role.id === guildId || m.roles.includes(role.id))
+      .map((m) => ({
+        id: m.user.id,
+        name: String(m.nick ?? m.user.global_name ?? m.user.username ?? m.user.id).slice(0, 100),
+        bot: !!m.user.bot,
+        removable:
+          !roleProtection(s, role) &&
+          has(botPermissions(s), P.ManageRoles) &&
+          m.user.id !== s.guild.owner_id &&
+          !m.user.bot &&
+          m.user.id !== s.bot.id &&
+          !s.roles.some((r) => m.roles.includes(r.id) && r.position >= botTopPosition(s)),
+      })),
+  };
 }

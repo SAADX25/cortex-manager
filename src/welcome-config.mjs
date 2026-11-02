@@ -38,7 +38,18 @@ export function validateWelcome(value) {
     throw new Error('Invalid welcome configuration.');
   const seen = new Set();
   for (const g of value.guilds) {
-    keys(g, ['guildId', 'join', 'leave']);
+    keys(g, ['guildId', 'join', 'leave', 'kick']);
+    if (g.kick !== undefined) {
+      keys(g.kick, ['enabled', 'channelId', 'language']);
+      if (
+        typeof g.kick.enabled !== 'boolean' ||
+        typeof g.kick.channelId !== 'string' ||
+        (g.kick.channelId !== '' && !snowflake(g.kick.channelId)) ||
+        (g.kick.enabled && !snowflake(g.kick.channelId)) ||
+        !['ar', 'en'].includes(g.kick.language)
+      )
+        throw new Error('Choose a valid kick notification channel and language.');
+    }
     if (!snowflake(g.guildId) || seen.has(g.guildId))
       throw new Error('Invalid or duplicate welcome server.');
     seen.add(g.guildId);
@@ -46,20 +57,24 @@ export function validateWelcome(value) {
       const v = g[type];
       if (v?.card !== undefined) validateCardStyle(v.card);
       keys(v, ['enabled', 'channelId', 'title', 'message', 'color', 'card']);
+      const invalid = (field, message) => {
+        throw Object.assign(
+          new Error((type === 'join' ? 'Welcome' : 'Farewell') + ': ' + message),
+          { welcomeType: type, field },
+        );
+      };
+      if (typeof v.enabled !== 'boolean') invalid('enabled', 'enable state must be a boolean.');
       if (
-        typeof v.enabled !== 'boolean' ||
         typeof v.channelId !== 'string' ||
         (v.channelId !== '' && !snowflake(v.channelId)) ||
-        (v.enabled && !snowflake(v.channelId)) ||
-        typeof v.title !== 'string' ||
-        !v.title.trim() ||
-        v.title.length > 100 ||
-        typeof v.message !== 'string' ||
-        !v.message.trim() ||
-        v.message.length > 1200 ||
-        !/^#[a-f0-9]{6}$/i.test(v.color ?? '')
+        (v.enabled && !snowflake(v.channelId))
       )
-        throw new Error('Choose a destination and a valid welcome message/color.');
+        invalid('channelId', 'choose a destination channel before enabling automatic messages.');
+      if (typeof v.title !== 'string' || !v.title.trim() || v.title.length > 100)
+        invalid('title', 'enter a title of 1–100 characters.');
+      if (typeof v.message !== 'string' || !v.message.trim() || v.message.length > 1200)
+        invalid('message', 'enter a message of 1–1200 characters.');
+      if (!/^#[a-f0-9]{6}$/i.test(v.color ?? '')) invalid('color', 'choose a valid card color.');
     }
   }
   return structuredClone(value);
@@ -92,7 +107,7 @@ export function createWelcomeStore({ root, demo = false }) {
         });
       const config = validateWelcome(body.config);
       if (
-        config.guilds.some((g) => ['join', 'leave'].some((t) => g[t].enabled)) &&
+        config.guilds.some((g) => g.kick?.enabled || ['join', 'leave'].some((t) => g[t].enabled)) &&
         body.confirmAutomatic !== true
       )
         throw new Error('Confirm automatic welcome messages.');

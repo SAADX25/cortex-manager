@@ -309,18 +309,26 @@
       if (guildId() === r.guildId && !busy()) action('inventory');
     }, 150);
   }
+  const simText = (key) => window.CortexI18n.text('simulator.' + key);
   const stageLabels = {
-    base: 'صلاحيات الجميع والرتب',
-    everyone: 'استثناءات @everyone',
-    roles: 'استثناءات رتب العضو',
-    member: 'استثناءات العضو',
-    owner: 'مالك السيرفر',
-    administrator: 'صلاحية Administrator',
-    timeout: 'تقييد العضو مؤقتًا',
-    dependency: 'صلاحية أساسية مطلوبة',
+    base: 'base',
+    everyone: 'everyone',
+    roles: 'roleStage',
+    member: 'memberStage',
+    owner: 'owner',
+    administrator: 'administrator',
+    timeout: 'timeout',
+    dependency: 'dependency',
   };
+  function simulationEmpty(changed = false) {
+    return `<section class="panel simulation-empty" aria-live="polite"><div class="sim-empty-mark">${icon('eye')}</div><h2>${simText('emptytitle')}</h2><p>${simText(changed ? 'refresh' : 'emptytext')}</p><div class="sim-steps">${['step1', 'step2', 'step3'].map((key, i) => `<div><span>0${i + 1}</span><strong>${simText(key)}</strong></div>`).join('')}</div></section>`;
+  }
   function simulationResult(p) {
-    return `<section class="panel simulation-result"><div class="panel-header"><div><h2 translate="no">${esc(p.memberName ?? p.channelName)}</h2><small><span translate="no">${esc(p.channelName)}</span> · ${shortTime(p.capturedAt)}</small></div><span class="pill purple">قراءة فقط</span></div><div class="panel-body"><div class="simulation-role-chips">${p.roles.map((r) => `<span translate="no">${esc(r.name)}</span>`).join('')}</div>${p.owner || p.administrator || p.timedOut ? `<div class="notice ${p.timedOut ? 'yellow' : 'green'}"><div>${p.owner ? 'مالك السيرفر يتجاوز قيود الأذونات.' : p.administrator ? 'Administrator يتجاوز استثناءات القناة.' : 'العضو مقيّد مؤقتًا؛ تبقى الرؤية وقراءة السجل بحسب أذونات القناة.'}</div></div>` : ''}<div class="simulation-results">${p.results.map((result) => `<details class="simulation-permission ${result.allowed ? 'allowed' : 'denied'}"><summary><strong>${esc(permissionLabel(result.name))}</strong><code>${esc(result.name)}</code><span class="pill ${result.allowed ? '' : 'red'}">${result.allowed ? 'مسموح' : 'غير مسموح'}</span>${icon('chevron')}</summary><ol>${result.trace.map((trace) => `<li><strong>${esc(stageLabels[trace.stage])}</strong><span>${trace.allowed ? 'سماح' : 'منع'}${trace.permission ? ' · ' + esc(permissionLabel(trace.permission)) : ''}</span>${trace.allow.length ? `<small>مصادر السماح: <span translate="no">${trace.allow.map((x) => esc(x.name)).join('، ')}</span></small>` : ''}${trace.deny.length ? `<small>مصادر المنع: <span translate="no">${trace.deny.map((x) => esc(x.name)).join('، ')}</span></small>` : ''}</li>`).join('')}</ol></details>`).join('')}</div></div></section>`;
+    const allowed = p.results.filter((r) => r.allowed).length;
+    const quick = p.results.filter((r) =>
+      ['ViewChannel', 'SendMessages', 'Connect', 'Speak'].includes(r.name),
+    );
+    return `<section class="panel simulation-result"><div class="panel-header"><div><h2 translate="no">${esc(p.memberName ?? p.channelName)}</h2><small><span translate="no"># ${esc(p.channelName)}</span> · ${shortTime(p.capturedAt)}</small></div><span class="pill purple">${simText('readonly')}</span></div><div class="panel-body"><div class="sim-stats"><div><span>${simText('permissions')}</span><strong>${p.results.length}</strong></div><div class="is-allowed"><span>${simText('allowed')}</span><strong>${allowed}</strong></div><div class="is-denied"><span>${simText('denied')}</span><strong>${p.results.length - allowed}</strong></div></div><div class="sim-quick">${quick.map((r) => `<div class="${r.allowed ? 'is-allowed' : 'is-denied'}">${icon(r.allowed ? 'check' : 'lock')}<span>${esc(permissionLabel(r.name))}</span><strong>${simText(r.allowed ? 'allowed' : 'denied')}</strong></div>`).join('')}</div><div class="simulation-role-chips">${p.roles.map((r) => `<span translate="no">${esc(r.name)}</span>`).join('')}</div>${p.owner || p.administrator || p.timedOut ? `<div class="notice ${p.timedOut ? 'yellow' : 'green'}"><div>${simText(p.owner ? 'ownernote' : p.administrator ? 'adminnote' : 'timeoutnote')}</div></div>` : ''}<div class="sim-results-toolbar"><div class="sim-filter-tabs" role="group" aria-label="${simText('permissions')}">${['all', 'allowed', 'denied'].map((filter, i) => `<button type="button" class="btn btn-small ${i === 0 ? 'btn-primary' : 'btn-ghost'}" data-simulation-filter="${filter}" aria-pressed="${i === 0}">${simText(filter)}</button>`).join('')}</div><input type="search" id="simulationPermissionSearch" aria-label="${simText('filter')}" placeholder="${simText('filter')}"></div><div class="simulation-results">${p.results.map((result) => `<details class="simulation-permission ${result.allowed ? 'allowed' : 'denied'}" data-simulation-result="${result.allowed ? 'allowed' : 'denied'}" data-permission-search="${esc(permissionLabel(result.name) + ' ' + result.name)}"><summary><span class="sim-decision-icon">${icon(result.allowed ? 'check' : 'lock')}</span><div class="sim-permission-label"><strong>${esc(permissionLabel(result.name))}</strong><small>${simText(stageLabels[result.trace.at(-1)?.stage] ?? 'base')}</small></div><span class="pill ${result.allowed ? 'green' : 'red'}">${simText(result.allowed ? 'allowed' : 'denied')}</span>${icon('chevron')}</summary><div class="sim-trace-heading">${simText('why')} <code>${esc(result.name)}</code></div><ol>${result.trace.map((trace) => `<li><strong>${simText(stageLabels[trace.stage] ?? 'base')}</strong><span>${simText(trace.allowed ? 'allowed' : 'denied')}${trace.permission ? ' · ' + esc(permissionLabel(trace.permission)) : ''}</span>${trace.allow.length ? `<small>${simText('allowSources')}: <span translate="no">${trace.allow.map((x) => esc(x.name)).join(' · ')}</span></small>` : ''}${trace.deny.length ? `<small>${simText('denySources')}: <span translate="no">${trace.deny.map((x) => esc(x.name)).join(' · ')}</span></small>` : ''}</li>`).join('')}</ol></details>`).join('')}</div><p id="simulationNoResults" hidden>${simText('noresults')}</p></div></section>`;
   }
   function renderSimulator() {
     const inv = inventory();
@@ -330,46 +338,49 @@
       return;
     }
     model.simulatorForms ??= {};
+    const channels = inv.channels.filter((c) => [0, 2, 5].includes(c.type));
     const form = (model.simulatorForms[guildId()] ??= {
       mode: 'member',
       memberId: '',
-      channelId: inv.channels.find((c) => [0, 2, 5].includes(c.type))?.id ?? '',
+      channelId: channels[0]?.id ?? '',
       roleIds: [],
+      query: '',
     });
-    if (!inv.channels.some((c) => c.id === form.channelId))
-      form.channelId = inv.channels.find((c) => [0, 2, 5].includes(c.type))?.id ?? '';
-    const p = model.state.simulation?.guildId === guildId() ? model.state.simulation : null;
+    if (!channels.some((c) => c.id === form.channelId)) form.channelId = channels[0]?.id ?? '';
+    form.roleIds = [...new Set(form.roleIds)].filter(
+      (id) => id !== inv.guildId && inv.roles.some((r) => r.id === id),
+    );
+    const candidate = model.state.simulation;
+    const sameRoles =
+      candidate?.roles
+        ?.filter((r) => r.id !== inv.guildId)
+        .map((r) => r.id)
+        .sort()
+        .join(',') === [...form.roleIds].sort().join(',');
+    const p =
+      candidate?.guildId === guildId() &&
+      candidate.channelId === form.channelId &&
+      candidate.mode === form.mode &&
+      (form.mode === 'member' ? candidate.memberId === form.memberId : sameRoles)
+        ? candidate
+        : null;
     $('#main').innerHTML =
-      heading(
-        'افهم الوصول، قبل تعديل الصلاحيات',
-        'اختر عضوًا أو مجموعة رتب، ثم اعرف ما يُسمح به داخل الغرفة ولماذا.',
-        'PERMISSION SIMULATOR',
-      ) +
-      `<div class="simulator-layout"><section class="panel simulator-form"><div class="panel-body"><div class="field"><label for="simulationMode">نوع المحاكاة</label><select id="simulationMode" ${busy() ? 'disabled' : ''}><option value="member" ${form.mode === 'member' ? 'selected' : ''}>عضو محدد</option><option value="roles" ${form.mode === 'roles' ? 'selected' : ''}>مجموعة رتب</option></select></div><div class="field"><label for="simulationChannel">الغرفة</label><select id="simulationChannel" ${busy() ? 'disabled' : ''}>${inv.channels
-        .filter((c) => [0, 2, 5].includes(c.type))
-        .map(
-          (c) =>
-            `<option value="${esc(c.id)}" ${c.id === form.channelId ? 'selected' : ''}>${esc(c.name)}</option>`,
-        )
-        .join('')}</select></div>${
+      `<div class="simulator-header"><div><h1>${simText('title')}</h1><p>${simText('subtitle')}</p></div><span class="pill purple">${icon('eye')} ${simText('readonly')}</span></div><div class="simulator-layout"><section class="panel simulator-form"><div class="panel-body"><div class="field"><label for="simulationMode">${simText('mode')}</label><select id="simulationMode" ${busy() ? 'disabled' : ''}><option value="member" ${form.mode === 'member' ? 'selected' : ''}>${simText('member')}</option><option value="roles" ${form.mode === 'roles' ? 'selected' : ''}>${simText('roles')}</option></select></div><div class="field"><label for="simulationChannel">${simText('channel')}</label><select id="simulationChannel" ${busy() ? 'disabled' : ''}>${channels.map((c) => `<option value="${esc(c.id)}" ${c.id === form.channelId ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></div>${
         form.mode === 'member'
-          ? `<div class="field"><label for="simulationMember">معرّف العضو · User ID</label><input class="ltr" id="simulationMember" inputmode="numeric" maxlength="22" value="${esc(form.memberId)}" ${busy() ? 'disabled' : ''}><small class="field-help">يُجلب هذا العضو فقط، دون تحميل قائمة الأعضاء كاملة.</small>${model.state.demo ? '<small class="field-help">عضو تجريبي: 900000000000001005</small>' : ''}</div>`
-          : `<div class="field"><span class="field-label">رتب المحاكاة</span><small class="field-help">تُضم صلاحيات @everyone تلقائيًا. استثناءات عضو بعينه لا تُحسب في هذا الوضع.</small><div class="simulation-role-picker">${inv.roles
+          ? `<div class="field"><label for="simulationMember">${simText('memberid')}</label><input class="ltr" id="simulationMember" inputmode="numeric" maxlength="22" value="${esc(form.memberId)}" ${busy() ? 'disabled' : ''}><small class="field-help">${simText('memberhelp')}</small>${model.state.demo ? '<code>900000000000001005</code>' : ''}</div>`
+          : `<div class="field"><div class="sim-role-heading"><span class="field-label">${simText('selected')} <b id="simulationSelectedCount">${form.roleIds.length}</b></span><button type="button" class="btn btn-ghost btn-small" id="simulationClearRoles" ${busy() ? 'disabled' : ''}>${simText('clear')}</button></div><input type="search" id="simulationRoleSearch" aria-label="${simText('searchroles')}" placeholder="${simText('searchroles')}" value="${esc(form.query ?? '')}"><div class="simulation-role-picker">${inv.roles
               .filter((r) => r.id !== inv.guildId)
               .map(
                 (r) =>
-                  `<label><input type="checkbox" data-simulation-role="${esc(r.id)}" ${form.roleIds.includes(r.id) ? 'checked' : ''} ${busy() ? 'disabled' : ''}><span translate="no">${esc(r.name)}</span></label>`,
+                  `<label class="simulation-role-option" data-role-search="${esc(r.name)}"><input type="checkbox" data-simulation-role="${esc(r.id)}" ${form.roleIds.includes(r.id) ? 'checked' : ''} ${busy() ? 'disabled' : ''}><span class="sim-role-dot" style="--role-color:${Number.isInteger(r.color) && r.color > 0 && r.color <= 0xffffff ? '#' + r.color.toString(16).padStart(6, '0') : '#9888ff'}"></span><span translate="no">${esc(r.name)}</span></label>`,
               )
-              .join('')}</div></div>`
-      }${button('تحليل الصلاحيات', 'runPermissionSimulation', 'btn-primary', 'eye', busy() || !form.channelId)}<p class="field-help">حساب لأذونات القناة الحالية. لا يشمل حالة الميكروفون أو قيود الجلسة الصوتية، ولا ينفّذ أي تعديل.</p>${model.state.error ? `<div class="notice yellow" role="alert"><div>${esc(model.state.error)}</div></div>` : ''}</div></section>${p ? simulationResult(p) : `<section class="panel empty-state simulation-empty"><div class="empty-illustration">${icon('key')}</div><h2>سبب كل سماح أو منع</h2><p>تظهر النتيجة مع تسلسل مصادر الصلاحيات والاستثناءات.</p></section>`}</div>`;
+              .join(
+                '',
+              )}</div><p id="simulationNoRoles" hidden>${simText('noroles')}</p><small class="field-help">${simText('rolehelp')}</small></div>`
+      }<button type="button" class="btn btn-primary" id="runPermissionSimulation" ${busy() || !form.channelId ? 'disabled' : ''}>${icon('eye')} ${simText(busy() ? 'running' : 'run')}</button><p class="field-help">${simText('scope')}</p>${model.state.error ? `<div class="notice yellow" role="alert"><div>${esc(model.state.error)}</div></div>` : ''}</div></section><div class="simulation-output" id="simulationOutput">${p ? simulationResult(p) : simulationEmpty()}</div></div>`;
     const invalidate = () => {
       model.state.simulation = null;
-      const old = $('.simulation-result');
-      if (old)
-        old.outerHTML =
-          '<section class="panel empty-state simulation-empty"><div class="empty-illustration">' +
-          icon('key') +
-          '</div><h2>أعد التحليل بعد تغيير الاختيار</h2><p>اضغط تحليل الصلاحيات لعرض نتيجة حديثة.</p></section>';
+      $('#simulationOutput').innerHTML = simulationEmpty(true);
     };
     $('#simulationMode').onchange = (e) => {
       form.mode = e.target.value;
@@ -387,27 +398,86 @@
         member.value = form.memberId;
         invalidate();
       };
+    const updateCount = () => {
+      $('#simulationSelectedCount').textContent = form.roleIds.length;
+    };
     $$('[data-simulation-role]').forEach(
       (input) =>
         (input.onchange = () => {
           form.roleIds = input.checked
-            ? [...form.roleIds, input.dataset.simulationRole]
+            ? [...new Set([...form.roleIds, input.dataset.simulationRole])]
             : form.roleIds.filter((id) => id !== input.dataset.simulationRole);
+          updateCount();
           invalidate();
         }),
     );
+    const search = $('#simulationRoleSearch');
+    if (search) {
+      const filterRoles = () => {
+        const q = (form.query ?? '').toLocaleLowerCase();
+        let count = 0;
+        $$('[data-role-search]').forEach((row) => {
+          row.hidden = !row.dataset.roleSearch.toLocaleLowerCase().includes(q);
+          if (!row.hidden) count++;
+        });
+        $('#simulationNoRoles').hidden = count > 0;
+      };
+      search.oninput = () => {
+        form.query = search.value;
+        filterRoles();
+      };
+      filterRoles();
+      $('#simulationClearRoles').onclick = () => {
+        form.roleIds = [];
+        $$('[data-simulation-role]').forEach((input) => (input.checked = false));
+        updateCount();
+        invalidate();
+      };
+    }
     $('#runPermissionSimulation').onclick = () => {
+      if (busy() || !form.channelId) return;
       if (form.mode === 'member' && !/^\d{16,22}$/.test(form.memberId)) {
-        toast('أدخل معرّف عضو صحيحًا.', 'error');
+        toast(simText('validmember'), 'error');
+        member?.focus();
         return;
       }
       action('permission-simulate', {
         simulationRequest: {
           channelId: form.channelId,
-          ...(form.mode === 'member' ? { memberId: form.memberId } : { roleIds: form.roleIds }),
+          ...(form.mode === 'member'
+            ? { memberId: form.memberId }
+            : { roleIds: [...form.roleIds] }),
         },
       });
     };
+    if (p) {
+      let filter = 'all';
+      const applyFilter = () => {
+        const q = $('#simulationPermissionSearch').value.toLocaleLowerCase();
+        let count = 0;
+        $$('[data-simulation-result]').forEach((row) => {
+          row.hidden =
+            (filter !== 'all' && row.dataset.simulationResult !== filter) ||
+            !row.dataset.permissionSearch.toLocaleLowerCase().includes(q);
+          if (!row.hidden) count++;
+        });
+        $('#simulationNoResults').hidden = count > 0;
+      };
+      $('#simulationPermissionSearch').oninput = applyFilter;
+      $$('[data-simulation-filter]').forEach(
+        (button) =>
+          (button.onclick = () => {
+            filter = button.dataset.simulationFilter;
+            $$('[data-simulation-filter]').forEach((b) => {
+              const selected = b === button;
+              b.classList.toggle('btn-primary', selected);
+              b.classList.toggle('btn-ghost', !selected);
+              b.setAttribute('aria-pressed', String(selected));
+            });
+            applyFilter();
+          }),
+      );
+    }
   }
   window.CortexWorkbench = { renderChanges, renderSimulator, handleResult };
 })();

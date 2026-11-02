@@ -1,3 +1,4 @@
+import { createKickNotifications } from './kick-notifications.mjs';
 import { readWelcomeFile } from './welcome-config.mjs';
 import { createWelcomeEngine } from './welcome-engine.mjs';
 import fs from 'node:fs';
@@ -11,6 +12,8 @@ import { createSocialEngine } from './social-engine.mjs';
 
 const STARTUP_ERRORS = {
   INVALID_WELCOME_CONFIG: 'Welcome settings are invalid; export a fresh package.',
+  INVALID_KICK_STATE:
+    'Kick notification state is invalid; restore its backup without resetting it.',
   INVALID_WELCOME_STATE:
     'Welcome delivery state is invalid; restore its backup without resetting it.',
   MISSING_BOT_TOKEN:
@@ -68,8 +71,10 @@ export async function startHostedBot({
   } catch {
     throw startupFailure('INVALID_WELCOME_CONFIG');
   }
-  const welcomeEnabled = welcomeConfig.guilds.some((g) => g.join.enabled || g.leave.enabled);
-  const gateway = new Gateway(token, { api, intents: welcomeEnabled ? 3 : 0 });
+  const kickEnabled = welcomeConfig.guilds.some((g) => g.kick?.enabled);
+  const welcomeEnabled =
+    kickEnabled || welcomeConfig.guilds.some((g) => g.join.enabled || g.leave.enabled);
+  const gateway = new Gateway(token, { api, intents: kickEnabled ? 7 : welcomeEnabled ? 3 : 0 });
   let stopped = false,
     timer = null,
     active = null,
@@ -86,11 +91,23 @@ export async function startHostedBot({
   } catch {
     throw startupFailure('INVALID_DELIVERY_STATE');
   }
-  let welcome;
+  let welcome, kick;
+  try {
+    kick = createKickNotifications({
+      api,
+      config: welcomeConfig,
+      stateFile: path.join(root, 'data', 'kick-deliveries.json'),
+      onStatus: log,
+      isStopping: () => stopped,
+    });
+  } catch {
+    throw startupFailure('INVALID_KICK_STATE');
+  }
   try {
     welcome = createWelcomeEngine({
       api,
       config: welcomeConfig,
+      suppressFarewell: kick.suppressFarewell,
       stateFile: path.join(root, 'data', 'welcome-deliveries.json'),
       onStatus: log,
       isStopping: () => stopped,
@@ -98,6 +115,9 @@ export async function startHostedBot({
   } catch {
     throw startupFailure('INVALID_WELCOME_STATE');
   }
+  gateway.on('audit-event', (entry) => {
+    void kick.handle(entry);
+  });
   gateway.on('member-event', (event) => {
     void welcome.handle(event);
   });
@@ -128,6 +148,8 @@ export async function startHostedBot({
     gateway.stop();
     await active;
     await welcome.drain();
+    await kick.drain();
+    await kickPermissionCheck;
   }
   gateway.on('status', (event) => {
     // Gateway descriptions can contain provider/server details: emit only the status enum.
@@ -155,8 +177,10 @@ export async function startHostedBot({
     tokenConfigured: true,
     configuredSources: initial.feeds.length,
     welcomeEnabled,
+    kickEnabled,
     nodeVersion: process.versions.node,
   });
+  const kickPermissionCheck = kickEnabled ? kick.checkPermissions() : Promise.resolve();
   gateway.start();
   if (!stopped) active = cycle();
   return {

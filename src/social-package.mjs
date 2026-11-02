@@ -7,6 +7,9 @@ import { validateSocial } from './social-config.mjs';
 // Explicit allowlist: no vault, .env, out, desktop bridge, .git or rebuild entry point.
 export const HOSTED_FILES = [
   'src/welcome-card.mjs',
+  'src/kick-notifications.mjs',
+  'src/kick-card.mjs',
+  'src/notification-locales.mjs',
   'src/welcome-card-style.mjs',
   'assets/welcome/NotoSans.ttf',
   'assets/welcome/OFL-Latin.txt',
