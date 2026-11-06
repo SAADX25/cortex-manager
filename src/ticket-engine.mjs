@@ -4,15 +4,15 @@ import { P, has, botPermissions, effectiveChannelPermissions, overwrite } from '
 import { atomicJSON, snowflake } from './social-config.mjs';
 import { validateTickets } from './ticket-config.mjs';
 import { ticketCopy } from './ticket-locales.mjs';
-import { ticketStatusCard, isTicketStatusMessage } from './ticket-status.mjs';
+import { ticketStatusCard, ticketPanelCard, isTicketStatusMessage } from './ticket-status.mjs';
 
 const prefix = 'cortex:ticket:';
 const commands = [
-  ['ticket', 'Open a private support ticket'],
-  ['ticket-panel', 'Publish the support ticket panel (support staff only)'],
-  ['ticket-claim', 'Claim this support ticket (support staff only)'],
-  ['ticket-close', 'Close this ticket without deleting its history (support staff only)'],
-  ['ticket-resolve', 'Confirm this issue is resolved and close its ticket (support staff only)'],
+  ['ticket', 'commandOpen'],
+  ['ticket-panel', 'commandPanel'],
+  ['ticket-claim', 'commandClaim'],
+  ['ticket-close', 'commandClose'],
+  ['ticket-resolve', 'commandResolve'],
 ];
 const quiet = { parse: [] };
 const button = (id, label, style = 1) => ({ type: 2, style, custom_id: prefix + id, label });
@@ -139,7 +139,7 @@ export function createTicketEngine({
     try {
       const payload = ticketStatusCard(ticket, ticketId, copy, original);
       if (notify) {
-        payload.content = `${copy.notified} — <@${ticket.ownerId}> ${ticket.staffRoleIds.map((id) => `<@&${id}>`).join(' ')}`;
+        payload.content = `📩 ${copy.notified}\n${ticket.staffRoleIds.map((id) => `<@&${id}>`).join(' ')}`;
         payload.allowed_mentions = {
           parse: [],
           roles: ticket.staffRoleIds,
@@ -344,11 +344,7 @@ export function createTicketEngine({
         !has(effectiveChannelPermissions(s, channel), P.ViewChannel | P.SendMessages | P.EmbedLinks)
       )
         throw new Error('Missing ticket panel permissions.');
-      await api.post(`/channels/${g.panelChannelId}/messages`, {
-        embeds: [{ title: c.title, description: c.panel, color: 0x9888ff }],
-        components: [row(button('open', c.open))],
-        allowed_mentions: quiet,
-      });
+      await api.post(`/channels/${g.panelChannelId}/messages`, ticketPanelCard(c));
       return reply(i, `${c.panelSent} <#${g.panelChannelId}>`);
     }
     const entry = Object.entries(state.tickets).find(
@@ -489,10 +485,10 @@ export function createTicketEngine({
       if (!snowflake(application?.id)) throw new Error('Invalid ticket application.');
       applicationId = application.id;
       for (const g of enabled)
-        for (const [name, description] of commands)
+        for (const [name, descriptionKey] of commands)
           await api.post(`/applications/${applicationId}/guilds/${g.guildId}/commands`, {
             name,
-            description,
+            description: ticketCopy[g.language][descriptionKey],
             type: 1,
             default_member_permissions: null,
           });

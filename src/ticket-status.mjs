@@ -5,12 +5,7 @@ export const TICKET_COLORS = Object.freeze({
   resolved: 0x57f287,
   closed: 0x949ba4,
 });
-const memberLabel = (id, name) =>
-  name
-    ? `${String(name)
-        .replace(/[\\`*_~|<>\[\]()]/g, '\\$&')
-        .slice(0, 200)} · <@${id}>`
-    : `<@${id}>`;
+const memberLabel = (id) => `<@${id}>`;
 export function ticketStatusCard(ticket, ticketId, copy, original = {}) {
   const resolved = ticket.status === 'closed';
   const phase = resolved
@@ -20,24 +15,29 @@ export function ticketStatusCard(ticket, ticketId, copy, original = {}) {
     : ticket.claimedBy
       ? 'claimed'
       : 'waiting';
+  const sameStaff = resolved && ticket.resolvedBy && ticket.resolvedBy === ticket.claimedBy;
   const fields = [
-    { name: copy.statusLabel, value: copy['status_' + phase], inline: false },
-    { name: copy.requesterLabel, value: `<@${ticket.ownerId}>`, inline: true },
-    {
-      name: copy.handlerLabel,
-      value: ticket.claimedBy ? memberLabel(ticket.claimedBy, ticket.claimedName) : copy.unassigned,
-      inline: true,
-    },
+    { name: copy.statusLabel, value: `**${copy['status_' + phase]}**`, inline: false },
+    { name: copy.requesterLabel, value: memberLabel(ticket.ownerId), inline: false },
   ];
-  if (resolved && ticket.resolvedBy)
+  if (sameStaff || ticket.claimedBy || !ticket.resolvedBy)
+    fields.push({
+      name: sameStaff ? copy.handlerResolverLabel : copy.handlerLabel,
+      value: ticket.claimedBy ? memberLabel(ticket.claimedBy) : copy.unassigned,
+      inline: false,
+    });
+  if (resolved && ticket.resolvedBy && !sameStaff)
     fields.push({
       name: copy.resolvedByLabel,
-      value: memberLabel(ticket.resolvedBy, ticket.resolvedName),
-      inline: true,
+      value: memberLabel(ticket.resolvedBy),
+      inline: false,
     });
   return {
+    // The initial staff notification is removed on later edits; the card carries the details.
+    content: '',
     embeds: [
       {
+        author: { name: copy.supportBrand },
         title: original.title || copy.title,
         ...(original.description ? { description: original.description } : {}),
         color: TICKET_COLORS[phase],
@@ -48,6 +48,63 @@ export function ticketStatusCard(ticket, ticketId, copy, original = {}) {
         ).toISOString(),
       },
     ],
+    components: resolved
+      ? [
+          {
+            type: 1,
+            components: [
+              {
+                type: 2,
+                style: ticket.resolvedBy ? 3 : 2,
+                custom_id: prefix + 'closed',
+                label: ticket.resolvedBy ? copy.resolvedButton : copy.closedButton,
+                emoji: { name: ticket.resolvedBy ? '✅' : '🔒' },
+                disabled: true,
+              },
+            ],
+          },
+        ]
+      : [
+          {
+            type: 1,
+            components: [
+              {
+                type: 2,
+                style: ticket.claimedBy ? 2 : 1,
+                custom_id: prefix + 'claim',
+                label: ticket.claimedBy ? copy.claimedButton : copy.claim,
+                emoji: { name: ticket.claimedBy ? '👤' : '🙋' },
+                disabled: Boolean(ticket.claimedBy),
+              },
+              {
+                type: 2,
+                style: 3,
+                custom_id: prefix + 'close',
+                label: copy.close,
+                emoji: { name: '✅' },
+              },
+            ],
+          },
+        ],
+    allowed_mentions: { parse: [] },
+  };
+}
+
+export function ticketPanelCard(copy) {
+  return {
+    embeds: [
+      {
+        author: { name: copy.supportBrand },
+        title: copy.panelTitle,
+        description: copy.panel,
+        color: 0x9888ff,
+        fields: [
+          { name: copy.panelStepsLabel, value: copy.panelSteps, inline: false },
+          { name: copy.panelFollowupLabel, value: copy.panelFollowup, inline: false },
+        ],
+        footer: { text: copy.panelFooter },
+      },
+    ],
     components: [
       {
         type: 1,
@@ -55,11 +112,10 @@ export function ticketStatusCard(ticket, ticketId, copy, original = {}) {
           {
             type: 2,
             style: 1,
-            custom_id: prefix + 'claim',
-            label: copy.claim,
-            disabled: resolved || Boolean(ticket.claimedBy),
+            custom_id: prefix + 'open',
+            label: copy.open,
+            emoji: { name: '🎫' },
           },
-          { type: 2, style: 3, custom_id: prefix + 'close', label: copy.close, disabled: resolved },
         ],
       },
     ],

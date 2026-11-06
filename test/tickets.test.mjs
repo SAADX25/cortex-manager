@@ -42,6 +42,7 @@ function harness(t, extra = {}) {
     responses = [],
     logs = [];
   const messages = new Map();
+  const registrations = [];
   server.state.members.push({ id: STAFF, roles: [LEGACY] });
   const api = {
     async get(p) {
@@ -78,7 +79,10 @@ function harness(t, extra = {}) {
     },
     async post(p, b) {
       trace.push(['post', p]);
-      if (p.endsWith('/commands')) return { id: '123456789012345678', ...b };
+      if (p.endsWith('/commands')) {
+        registrations.push(structuredClone(b));
+        return { id: '123456789012345678', ...b };
+      }
       const result = await server.api.call('POST', p, b);
       const channelId = p.match(/^\/channels\/(\d+)\/messages$/)?.[1];
       if (channelId)
@@ -168,6 +172,7 @@ function harness(t, extra = {}) {
     responses,
     logs,
     messages,
+    registrations,
     stateFile,
     make,
     interaction,
@@ -212,6 +217,23 @@ test('registration upserts only ticket commands and Gateway interaction delivery
   await engine.register();
   const calls = h.trace.filter(([m]) => m === 'post');
   assert.equal(calls.length, 5);
+  assert.deepEqual(
+    h.registrations.map((c) => c.name),
+    ['ticket', 'ticket-panel', 'ticket-claim', 'ticket-close', 'ticket-resolve'],
+  );
+  assert.ok(
+    h.registrations.every(
+      (c) => /[\u0600-\u06ff]/.test(c.description) && c.description.length <= 100,
+    ),
+  );
+  assert.ok(h.registrations.every((c) => !Object.hasOwn(c, 'name_localizations')));
+  const english = harness(t, { language: 'en' });
+  await english.make().register();
+  assert.ok(
+    english.registrations.every(
+      (c) => !/[\u0600-\u06ff]/.test(c.description) && c.description.length <= 100,
+    ),
+  );
   assert.ok(calls.every(([, p]) => p === `/applications/${BOT}/guilds/${ID}/commands`));
   for (const enabled of [false, true]) {
     const gateway = new GatewaySession('test', { Socket: class {}, receiveInteractions: enabled });
@@ -292,7 +314,10 @@ test('one status card changes red to yellow to green, preserves the issue and re
   ticket = h.read().tickets[submitted.id];
   assert.equal(ticket.claimedBy, STAFF);
   assert.equal(card().embeds[0].color, TICKET_COLORS.claimed);
-  assert.match(card().embeds[0].fields[2].value, /أحمد الدعم/);
+  assert.equal(ticket.claimedName, 'أحمد الدعم');
+  assert.equal(card().embeds[0].fields[2].value, `<@${STAFF}>`);
+  assert.ok(card().embeds[0].fields.every((f) => f.inline === false));
+  assert.equal(card().content, '');
   assert.ok(card().embeds[0].fields[2].value.includes(`<@${STAFF}>`));
   assert.equal(card().embeds[0].description, originalDescription);
   assert.equal(card().components[0].components[0].disabled, true);
@@ -313,6 +338,28 @@ test('one status card changes red to yellow to green, preserves the issue and re
   assert.ok(card().components[0].components.every((b) => b.disabled));
   assert.deepEqual(card().allowed_mentions, { parse: [] });
   assert.equal(h.messages.size, 1);
+});
+
+test('the same handler and resolver is shown once, with a single completed status control', async (t) => {
+  const h = harness(t),
+    submitted = h.interaction(),
+    engine = h.make();
+  await engine.handle(submitted);
+  const ticket = h.read().tickets[submitted.id];
+  await engine.handle(h.interaction('ticket-claim', STAFF, ticket.channelId));
+  await engine.handle(h.interaction('button:confirm-close', STAFF, ticket.channelId));
+  const card = h.messages.get(ticket.messageId),
+    embed = card.embeds[0];
+  const staffFields = embed.fields.filter((f) => f.value.includes(`<@${STAFF}>`));
+  assert.equal(staffFields.length, 1);
+  assert.match(staffFields[0].name, /المتابعة والحل/);
+  assert.equal(embed.author.name, 'CORTEX • مركز الدعم');
+  assert.equal(embed.title, 'Help @everyone');
+  assert.equal(embed.description, 'Details <@&999999999999999992>');
+  assert.equal(card.components[0].components.length, 1);
+  assert.equal(card.components[0].components[0].label, 'تم حل المشكلة');
+  assert.equal(card.components[0].components[0].disabled, true);
+  assert.deepEqual(card.allowed_mentions, { parse: [] });
 });
 
 test('legacy open tickets upgrade their original message on the next staff action', async (t) => {
@@ -427,6 +474,12 @@ test('support commands deny ordinary members and unselected administrator roles;
   await engine.handle(h.interaction('ticket-panel', OWNER));
   assert.equal(h.server.calls.length, 1);
   assert.equal(h.server.calls[0].path, `/channels/${PANEL}/messages`);
+  const panel = h.server.calls[0].body;
+  assert.match(panel.embeds[0].title, /كيف نقدر نساعدك/);
+  assert.equal(panel.embeds[0].fields.length, 2);
+  assert.ok(panel.embeds[0].fields.every((field) => field.inline === false));
+  assert.equal(panel.components[0].components[0].label, 'فتح تذكرة دعم');
+  assert.deepEqual(panel.allowed_mentions, { parse: [] });
 });
 
 test('one open ticket survives concurrent requests and restarts; claim and confirmed close preserve history', async (t) => {
