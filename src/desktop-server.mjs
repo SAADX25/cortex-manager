@@ -1,4 +1,6 @@
 import { designPresets } from './design-presets.mjs';
+import { createTicketStore } from './ticket-config.mjs';
+import { buildDiscloud, deploymentStatus, readDeploymentArchive } from './deployment-package.mjs';
 import { createWelcomeAssetStore, assetId } from './welcome-assets.mjs';
 import { renderWelcomeCard } from './welcome-card.mjs';
 import { validateWelcome, welcomeDefaults } from './welcome-config.mjs';
@@ -90,6 +92,7 @@ const STATIC = new Map([
   ['/index.html', 'index.html'],
   ['/app.js', 'app.js'],
   ['/role-translation.js', 'role-translation.js'],
+  ['/desktop-ui.js', 'desktop-ui.js'],
   ['/i18n.js', 'i18n.js'],
   ['/locales/ar.js', 'locales/ar.js'],
   ['/locales/en.js', 'locales/en.js'],
@@ -99,6 +102,8 @@ const STATIC = new Map([
   ['/workspace-drafts.js', 'workspace-drafts.js'],
   ['/workbench-ui.js', 'workbench-ui.js'],
   ['/welcome-ui.js', 'welcome-ui.js'],
+  ['/ticket-ui.js', 'ticket-ui.js'],
+  ['/deployment-ui.js', 'deployment-ui.js'],
   ['/social-ui.js', 'social-ui.js'],
   ['/styles.css', 'styles.css'],
   ['/favicon.svg', 'favicon.svg'],
@@ -326,6 +331,7 @@ export async function createDesktopServer({
   const workspaceStore = createWorkspaceStore({ root, demo });
   const socialStore = createSocialStore({ root, demo });
   const welcomeStore = createWelcomeStore({ root, demo });
+  const ticketStore = createTicketStore({ root, demo });
   const welcomeAssets = createWelcomeAssetStore({ root, demo });
   const resolveYouTubeSources = createYouTubeSourceResolver({ fetchImpl: socialFetch });
   const socialLinks = createSocialLinkReader({ root, demo, socialStore });
@@ -507,6 +513,8 @@ export async function createDesktopServer({
     } else if (event.event === 'permission-simulation') {
       state.simulation = event.data;
       log('اكتملت محاكاة الصلاحيات للقراءة فقط.');
+    } else if (event.event === 'log') {
+      log(event.message ?? 'Bot event', event.level === 'error' ? 'error' : 'info');
     } else if (event.event === 'presence') {
       state.presence = event;
       state.online = event.status === 'online';
@@ -1030,14 +1038,87 @@ export async function createDesktopServer({
         )
           return send(401, { error: 'جلسة محلية غير صالحة.' });
         lastSeen = Date.now();
+        if (url.pathname === '/api/deployment' && req.method === 'GET')
+          return send(200, deploymentStatus({ root, demo }));
+        if (url.pathname === '/api/deployment/download' && req.method === 'GET') {
+          if (demo) return send(403, { error: 'Deployment export is unavailable in demo mode.' });
+          const bytes = readDeploymentArchive({ root, sha256: url.searchParams.get('sha256') });
+          res.setHeader('Content-Disposition', 'attachment; filename="cortex-manager.zip"');
+          return send(200, bytes, 'application/zip');
+        }
+        if (url.pathname === '/api/deployment/build') {
+          if (req.method !== 'POST') return send(405, { error: 'Method not allowed.' });
+          if (demo) return send(403, { error: 'Deployment export is unavailable in demo mode.' });
+          if (!/^application\/json(?:;|$)/i.test(String(req.headers['content-type'] ?? '')))
+            return send(415, { error: 'JSON required.' });
+          let size = 0;
+          const parts = [];
+          for await (const part of req) {
+            size += part.length;
+            if (size > 4096) {
+              send(413, { error: 'Request too large.' });
+              req.resume();
+              return;
+            }
+            parts.push(part);
+          }
+          let body;
+          try {
+            body = JSON.parse(Buffer.concat(parts).toString('utf8'));
+          } catch {
+            return send(400, { error: 'Invalid JSON.' });
+          }
+          if (
+            !body ||
+            typeof body !== 'object' ||
+            Array.isArray(body) ||
+            Object.keys(body).some((key) => !['appId', 'baseRevision'].includes(key)) ||
+            typeof body.appId !== 'string' ||
+            !/^\d{5,22}$/.test(body.appId) ||
+            typeof body.baseRevision !== 'string' ||
+            !/^[a-f0-9]{64}$/.test(body.baseRevision)
+          )
+            return send(400, { error: 'Invalid package request.' });
+          buildDiscloud({ root, appId: body.appId, baseRevision: body.baseRevision });
+          return send(200, deploymentStatus({ root }));
+        }
         if (url.pathname === '/api/social/package' && req.method === 'GET') {
           if (demo) return send(403, { error: 'Deployment export is unavailable in demo mode.' });
           res.setHeader('Content-Disposition', 'attachment; filename="Cortex-Social-Discloud.zip"');
           return send(
             200,
-            hostedPackage(root, socialStore.read().config, welcomeStore.read().config),
+            hostedPackage(
+              root,
+              socialStore.read().config,
+              welcomeStore.read().config,
+              ticketStore.read().config,
+            ),
             'application/zip',
           );
+        }
+        if (url.pathname === '/api/tickets') {
+          if (req.method === 'GET') return send(200, ticketStore.read());
+          if (req.method !== 'POST') return send(405, { error: 'Method not allowed.' });
+          if (!/^application\/json(?:;|$)/i.test(String(req.headers['content-type'] ?? '')))
+            return send(415, { error: 'JSON required.' });
+          let size = 0;
+          const parts = [];
+          for await (const part of req) {
+            size += part.length;
+            if (size > 64000) {
+              send(413, { error: 'Ticket settings too large.' });
+              req.resume();
+              return;
+            }
+            parts.push(part);
+          }
+          let body;
+          try {
+            body = JSON.parse(Buffer.concat(parts).toString('utf8'));
+          } catch {
+            return send(400, { error: 'Invalid JSON.' });
+          }
+          return send(200, ticketStore.save(body));
         }
         if (url.pathname === '/api/welcome/assets') {
           const guildId = url.searchParams.get('guildId');

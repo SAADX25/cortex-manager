@@ -18,6 +18,8 @@ const keyHash = location.hash.slice(1),
 // The fragment contains only the per-launch local capability, never the bot
 // token. Keeping it permits a normal window refresh without persistent storage.
 const titles = {
+  deployment: 'تجهيز ملف ZIP',
+  tickets: 'تذاكر الدعم',
   welcome: 'الترحيب والمغادرة',
   social: 'البثوث والمقاطع',
   changes: 'مساحة التغييرات',
@@ -970,7 +972,9 @@ function render() {
   $$('[data-page]').forEach((b) => b.classList.toggle('active', b.dataset.page === model.page));
   $('#pageCrumb').textContent = titles[model.page];
   const renderers = {
+    deployment: () => window.CortexDeployment.render(),
     welcome: () => window.CortexWelcome.render(),
+    tickets: () => window.CortexTickets.render(),
     social: () => window.CortexSocial.render(),
     changes: () => window.CortexWorkbench.renderChanges(),
     simulator: () => window.CortexWorkbench.renderSimulator(),

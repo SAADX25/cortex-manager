@@ -28,11 +28,13 @@ export class GatewaySession extends EventEmitter {
       now = Date.now,
       timers = { setTimeout, clearTimeout },
       intents = 0,
+      receiveInteractions = false,
     } = {},
   ) {
     super();
     if (![0, 3, 7].includes(intents)) throw new Error('Unsupported Gateway intents.');
     this.intents = intents;
+    this.receiveInteractions = receiveInteractions;
     this.token = token;
     this.api = api;
     this.Socket = Socket;
@@ -194,6 +196,13 @@ export class GatewaySession extends EventEmitter {
   }
   receive(packet) {
     if (packet.s !== null && packet.s !== undefined) this.sequence = packet.s;
+    if (
+      packet.op === 0 &&
+      packet.t === 'INTERACTION_CREATE' &&
+      this.session &&
+      this.receiveInteractions
+    )
+      this.emit('interaction', packet.d);
     if (
       packet.op === 0 &&
       [3, 7].includes(this.intents) &&

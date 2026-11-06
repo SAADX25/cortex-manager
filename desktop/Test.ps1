@@ -3,7 +3,7 @@ $projectRoot = Split-Path -Parent $PSScriptRoot
 $applicationPath = & (Join-Path $PSScriptRoot 'Launch.ps1') -BuildOnly
 $nodePath = (Get-Command node.exe -ErrorAction Stop).Source
 if (-not (Test-Path -LiteralPath $applicationPath)) { throw 'Modern desktop executable was not built.' }
-foreach ($asset in @('index.html','app.js','i18n.js','locales/ar.js','locales/en.js','locales/patterns.js','welcome-ui.js','role-translation.js','designer.js','arrange.js','workspace-drafts.js','workbench-ui.js','social-ui.js','styles.css','favicon.svg')) {
+foreach ($asset in @('index.html','app.js','i18n.js','locales/ar.js','locales/en.js','locales/patterns.js','welcome-ui.js','ticket-ui.js','deployment-ui.js','role-translation.js','designer.js','arrange.js','workspace-drafts.js','workbench-ui.js','desktop-ui.js','social-ui.js','styles.css','favicon.svg')) {
     if (-not (Test-Path -LiteralPath (Join-Path $PSScriptRoot ('web\' + $asset)))) { throw "Missing modern UI asset: $asset" }
 }
 & $nodePath --check (Join-Path $PSScriptRoot 'web\workbench-ui.js')

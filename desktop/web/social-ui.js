@@ -138,7 +138,7 @@
  <p class="field-help">${t('social.posted_as_the_bot_after_preview_and_confirmation_mentions_are_disabled')}</p>
  <div class="social-actions"><button class="btn btn-ghost" type="submit" ${!inv || busy() || d.imageReading ? 'disabled' : ''}>${icon('eye')}${t('ui.preview_message')}</button><button class="btn btn-primary" type="button" id="socialSend" ${!p || busy() || model.state.demo ? 'disabled' : ''}>${icon('play')}${t('social.send_to_discord')}</button></div>
  ${p ? `<div class="notice social-review-notice" role="status">${icon('eye')}<div><strong>${t('social.preview_ready_message_not_sent_yet')}</strong><p>${t('social.select_send_to_discord_then_confirm_in_the_next_dialog')}</p></div></div><pre class="social-preview" dir="auto">${esc(p.content)}</pre>` : ''}</form></section>
- <section class="panel"><div class="panel-header"><h2>${t('social.run_on_discloud')}</h2><span class="pill">Cloud</span></div><div class="panel-body social-host"><p>${t('social.download_all_saved_sources_upload_the_package_then_set_the_bot_token_in_')}</p><button id="exportSocial" class="btn btn-primary" ${!saved || dirty || saving || model.state.demo ? 'disabled' : ''}>${icon('log')}${t('social.download_discloud_package')}</button><p class="field-help">${t('social.the_free_plan_does_not_guarantee_uninterrupted_operation_saves_are_local')}</p><a class="btn btn-ghost" href="https://discloud.com/dashboard/app/create" target="_blank" rel="noopener noreferrer">${icon('link')}${t('social.open_discloud')}</a></div></section></div></div>
+ <section class="panel"><div class="panel-header"><h2>${t('social.run_on_discloud')}</h2><span class="pill">Cloud</span></div><div class="panel-body social-host"><p>${t('social.download_all_saved_sources_upload_the_package_then_set_the_bot_token_in_')}</p><button id="exportSocial" class="btn btn-primary" ${!saved || dirty || saving || model.state.demo ? 'disabled' : ''}>${icon('log')}${t('deployment.title')}</button><p class="field-help">${t('social.the_free_plan_does_not_guarantee_uninterrupted_operation_saves_are_local')}</p><a class="btn btn-ghost" href="https://discloud.com/dashboard/app/1793358824529" target="_blank" rel="noopener noreferrer">${icon('link')}${t('social.open_discloud')}</a></div></section></div></div>
  <section class="panel social-capabilities"><h2>${t('social.automatic_capabilities')}</h2><div class="social-grid"><p><strong>YouTube</strong><span>${t('social.new_videos_and_shorts_via_rss_accepts_a_channel_url_or_handle_live_start')}</span></p><p><strong>Kick</strong><span>${t('social.new_live_streams_via_the_official_api_requires_client_id_and_client_secr')}</span></p><p><strong>Instagram</strong><span>${t('social.use_an_rss_app_feed_for_a_public_account_or_the_api_for_an_authorized_pr')}</span></p><p><strong>TikTok</strong><span>${t('social.new_videos_from_your_authorized_account_via_api_requires_tiktok_access_t')}</span></p></div><p class="field-help">${t('social.the_first_successful_check_skips_existing_content_checks_run_roughly_eve')}</p></section></div>`;
     if (!saved && !loading && !error) void load();
     if (saving)
@@ -395,19 +395,7 @@
         });
       };
     };
-    $('#exportSocial').onclick = guard(async () => {
-      const response = await fetch('/api/social/package', {
-        headers: { 'X-Cortex-Key': apiKey },
-        cache: 'no-store',
-      });
-      if (!response.ok) throw new Error((await response.json()).error);
-      const href = URL.createObjectURL(await response.blob()),
-        a = document.createElement('a');
-      a.href = href;
-      a.download = 'Cortex-Social-Discloud.zip';
-      a.click();
-      setTimeout(() => URL.revokeObjectURL(href), 1000);
-    });
+    $('#exportSocial').onclick = () => go('deployment');
   }
   window.addEventListener('beforeunload', (event) => {
     if (dirty || saving) {

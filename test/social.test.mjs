@@ -460,6 +460,7 @@ test('package contains only allowlisted source, nonsecret configuration and root
       'discloud.config',
       'config/social-feeds.json',
       'config/welcome.json',
+      'config/tickets.json',
     ].sort(),
   );
   assert.ok(names.every((n) => !/(^|\/)(\.env|out|desktop|\.git|data)(\/|$)/.test(n)));

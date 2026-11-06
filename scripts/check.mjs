@@ -42,7 +42,7 @@ for (const key of Object.keys(ar)) {
   const tokens = (value) => [...new Set(value.match(/\{[a-zA-Z][a-zA-Z0-9_]*\}/g) ?? [])].sort();
   assert.deepEqual(tokens(ar[key]), tokens(en[key]), 'Translation placeholders differ: ' + key);
 }
-for (const file of ['social-ui.js', 'welcome-ui.js']) {
+for (const file of ['social-ui.js', 'welcome-ui.js', 'ticket-ui.js', 'deployment-ui.js']) {
   const code = fs.readFileSync(path.join(root, 'desktop/web', file), 'utf8');
   for (const match of code.matchAll(/\bt\(['"]([^'"]+)['"]\)/g))
     assert.ok(Object.hasOwn(ar, match[1]), 'Unknown translation key: ' + match[1]);

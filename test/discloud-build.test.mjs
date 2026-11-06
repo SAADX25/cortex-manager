@@ -8,6 +8,8 @@ import { buildDiscloud } from '../scripts/build-discloud.mjs';
 import { HOSTED_FILES } from '../src/social-package.mjs';
 import { createSocialStore } from '../src/social-config.mjs';
 import { createWelcomeStore, welcomeDefaults } from '../src/welcome-config.mjs';
+import { createTicketStore, ticketDefaults } from '../src/ticket-config.mjs';
+import { deploymentStatus, readDeploymentArchive } from '../src/deployment-package.mjs';
 function temporary(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'cortex-export-'));
   t.after(() => {
@@ -99,4 +101,72 @@ test('quick build refuses empty settings before replacing an existing archive', 
   fs.writeFileSync(zip, 'previous');
   assert.throws(() => buildDiscloud({ root }), /No saved settings/);
   assert.equal(fs.readFileSync(zip, 'utf8'), 'previous');
+});
+
+test('ticket-only export includes settings and runtime, excluding local request state', (t) => {
+  const root = temporary(t),
+    project = fileURLToPath(new URL('../', import.meta.url));
+  for (const file of HOSTED_FILES) {
+    const output = path.join(root, file);
+    fs.mkdirSync(path.dirname(output), { recursive: true });
+    fs.copyFileSync(path.join(project, file), output);
+  }
+  const store = createTicketStore({ root });
+  const guild = {
+    ...ticketDefaults('111111111111111111'),
+    enabled: true,
+    panelChannelId: '777777777777777777',
+    categoryId: '666666666666666666',
+    staffRoleIds: ['555555555555555555'],
+  };
+  store.save({
+    baseRevision: store.read().revision,
+    config: { version: 1, guilds: [guild] },
+    confirmAutomatic: true,
+  });
+  fs.writeFileSync(path.join(root, 'out/desktop-modern/ticket-state.json'), 'private-ticket-state');
+  const { zip, report } = buildDiscloud({ root });
+  const bytes = fs.readFileSync(zip);
+  assert.deepEqual(report.tickets, [guild]);
+  assert.deepEqual(report.requiredEnvironment, ['DISCORD_BOT_TOKEN']);
+  assert.equal(report.serverMembersIntent, false);
+  assert.ok(bytes.includes(Buffer.from('config/tickets.json')));
+  assert.ok(bytes.includes(Buffer.from('src/ticket-engine.mjs')));
+  assert.ok(!bytes.includes(Buffer.from('private-ticket-state')));
+  const status = deploymentStatus({ root });
+  assert.equal(status.appId, '1793358824529');
+  assert.equal(status.lastBuild.stale, false);
+  assert.equal(status.features.find((f) => f.key === 'tickets').enabled, 1);
+  assert.deepEqual(readDeploymentArchive({ root, sha256: report.sha256 }), bytes);
+  assert.throws(() => readDeploymentArchive({ root, sha256: '../private' }), /fingerprint/);
+  assert.throws(() => buildDiscloud({ root, appId: 'https://evil.example' }), /application ID/);
+  const originalArchive = fs.readFileSync(zip);
+  store.save({
+    baseRevision: store.read().revision,
+    config: { version: 1, guilds: [{ ...guild, enabled: false }] },
+    confirmAutomatic: true,
+  });
+  assert.equal(deploymentStatus({ root }).lastBuild.stale, true);
+  assert.throws(
+    () => readDeploymentArchive({ root, sha256: report.sha256 }),
+    (e) => e.status === 409,
+  );
+  assert.throws(
+    () => buildDiscloud({ root, baseRevision: status.revision }),
+    (e) => e.status === 409,
+  );
+  assert.deepEqual(fs.readFileSync(zip), originalArchive);
+  const rebuilt = buildDiscloud({ root, appId: '1793358824529' });
+  fs.appendFileSync(path.join(root, 'src/ticket-engine.mjs'), '\n// changed runtime\n');
+  assert.equal(deploymentStatus({ root }).lastBuild.stale, true);
+  assert.throws(
+    () => readDeploymentArchive({ root, sha256: rebuilt.report.sha256 }),
+    (e) => e.status === 409,
+  );
+  const newest = buildDiscloud({ root });
+  fs.appendFileSync(zip, 'corrupt');
+  assert.throws(
+    () => readDeploymentArchive({ root, sha256: newest.report.sha256 }),
+    (e) => e.status === 409,
+  );
 });

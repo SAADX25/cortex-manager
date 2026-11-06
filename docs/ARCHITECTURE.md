@@ -37,11 +37,15 @@ Custom role names have no special protection. Manageability follows Discord perm
 
 ## Hosted flow
 
+`src/deployment-package.mjs` is the shared offline builder behind the central `desktop/web/deployment-ui.js` page and `scripts/build-discloud.mjs`. Authenticated `/api/deployment` routes report saved-feature counts, build a checked archive and download only the matching SHA-256 after rechecking configuration/source freshness. The UI never reads environment values or credentials, never deploys automatically, and links to the chosen existing Discloud application. Legacy feature export buttons navigate to the central page. Direct administration operations remain separate from hosted feature configuration.
+
 Saved nonsecret social/welcome settings → explicit ZIP export → manual deployment → hosted process reads environment credentials and package configuration. Persistent delivery reservations prevent ambiguous retries. Updating local forms does not change the hosted bot until another package is deployed.
 
 Canvas/font loading is lazy; image rendering is serialized and bounded. Original uploaded backgrounds are normalized into a per-guild library. Only selected backgrounds enter the hosted package.
 
 ## Maintenance boundaries
+
+Support tickets use `src/ticket-config.mjs`, `ticket-engine.mjs`, `ticket-status.mjs` and `ticket-locales.mjs`, with the bilingual form in `desktop/web/ticket-ui.js`. The authenticated `/api/tickets` route persists reviewed nonsecret settings. Local presence workers load settings for their selected guild; hosted packages carry `config/tickets.json`. Both runtimes explicitly opt into Gateway interactions, register only the five ticket commands, and use a separate REST queue for interaction acknowledgements. Fresh membership checks authorize staff/requester actions. Durable reservations and exact channel markers prevent duplicate creates after reconnects or ambiguous responses. Close explicitly confirms resolution before applying read-only permissions and never deletes history. A persistent bot-owned status message changes red/yellow/green for waiting/claimed/resolved, retaining the original issue and the handler/resolver names. Legacy state remains readable, and failed card edits can be retried without reassigning staff or repeating channel closure. Runtime settings are a startup snapshot, and only one instance should handle a guild at a time.
 
 Formatting changes retain module paths and public APIs. The large dashboard and bridge remain orchestration modules; feature-specific behavior belongs in its existing module rather than expanding their event handlers. Styles retain their established cascade order to avoid appearance regressions. Backend operational errors remain authored at their source; user-visible translations belong in the catalogs, never in provider response data.
 

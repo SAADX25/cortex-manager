@@ -1,4 +1,6 @@
 import { createKickNotifications } from './kick-notifications.mjs';
+import { readTicketFile } from './ticket-config.mjs';
+import { createTicketEngine } from './ticket-engine.mjs';
 import { readWelcomeFile } from './welcome-config.mjs';
 import { createWelcomeEngine } from './welcome-engine.mjs';
 import fs from 'node:fs';
@@ -11,6 +13,10 @@ import { createSocialProviders } from './social-providers.mjs';
 import { createSocialEngine } from './social-engine.mjs';
 
 const STARTUP_ERRORS = {
+  INVALID_TICKET_CONFIG: 'Ticket settings are invalid; export a fresh package.',
+  INVALID_TICKET_STATE: 'Ticket state is invalid; restore its backup without resetting it.',
+  TICKET_REGISTRATION_FAILED:
+    'Could not register ticket commands. Check bot installation and application permissions.',
   INVALID_WELCOME_CONFIG: 'Welcome settings are invalid; export a fresh package.',
   INVALID_KICK_STATE:
     'Kick notification state is invalid; restore its backup without resetting it.',
@@ -43,6 +49,7 @@ export async function startHostedBot({
   env = process.env,
   root = fileURLToPath(new URL('../', import.meta.url)),
   api,
+  responseAPI,
   Gateway = GatewaySession,
   fetchItems,
   onFatal = () => {},
@@ -62,9 +69,16 @@ export async function startHostedBot({
     }
   };
   const initial = readConfig();
+  responseAPI ??= api ?? new DiscordAPI(token);
   api ??= new DiscordAPI(token);
   if (Gateway === GatewaySession && typeof globalThis.WebSocket !== 'function')
     throw startupFailure('UNSUPPORTED_RUNTIME');
+  let ticketConfig;
+  try {
+    ticketConfig = readTicketFile(path.join(root, 'config', 'tickets.json'));
+  } catch {
+    throw startupFailure('INVALID_TICKET_CONFIG');
+  }
   let welcomeConfig;
   try {
     welcomeConfig = readWelcomeFile(path.join(root, 'config', 'welcome.json'));
@@ -74,12 +88,32 @@ export async function startHostedBot({
   const kickEnabled = welcomeConfig.guilds.some((g) => g.kick?.enabled);
   const welcomeEnabled =
     kickEnabled || welcomeConfig.guilds.some((g) => g.join.enabled || g.leave.enabled);
-  const gateway = new Gateway(token, { api, intents: kickEnabled ? 7 : welcomeEnabled ? 3 : 0 });
+  const gateway = new Gateway(token, {
+    api,
+    intents: kickEnabled ? 7 : welcomeEnabled ? 3 : 0,
+    receiveInteractions: true,
+  });
   let stopped = false,
     timer = null,
     active = null,
     failed = false;
   let engine;
+  let tickets;
+  try {
+    tickets = createTicketEngine({
+      api,
+      responseAPI,
+      config: ticketConfig,
+      stateFile: path.join(root, 'data', 'tickets.json'),
+      onStatus: log,
+      isStopping: () => stopped,
+    });
+  } catch {
+    throw startupFailure('INVALID_TICKET_STATE');
+  }
+  gateway.on('interaction', (event) => {
+    void tickets.handle(event);
+  });
   try {
     engine = createSocialEngine({
       api,
@@ -149,6 +183,7 @@ export async function startHostedBot({
     await active;
     await welcome.drain();
     await kick.drain();
+    await tickets.drain();
     await kickPermissionCheck;
   }
   gateway.on('status', (event) => {
@@ -171,6 +206,11 @@ export async function startHostedBot({
       void stop().then(onFatal);
     }
   });
+  try {
+    await tickets.register();
+  } catch {
+    throw startupFailure('TICKET_REGISTRATION_FAILED');
+  }
   log({
     component: 'startup',
     status: 'ready',
@@ -178,6 +218,7 @@ export async function startHostedBot({
     configuredSources: initial.feeds.length,
     welcomeEnabled,
     kickEnabled,
+    ticketsEnabled: ticketConfig.guilds.some((g) => g.enabled),
     nodeVersion: process.versions.node,
   });
   const kickPermissionCheck = kickEnabled ? kick.checkPermissions() : Promise.resolve();

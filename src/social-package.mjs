@@ -3,9 +3,14 @@ import { validateWelcome, emptyWelcome } from './welcome-config.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import { validateSocial } from './social-config.mjs';
+import { validateTickets, emptyTickets } from './ticket-config.mjs';
 
 // Explicit allowlist: no vault, .env, out, desktop bridge, .git or rebuild entry point.
 export const HOSTED_FILES = [
+  'src/ticket-config.mjs',
+  'src/ticket-engine.mjs',
+  'src/ticket-locales.mjs',
+  'src/ticket-status.mjs',
   'src/welcome-card.mjs',
   'src/kick-notifications.mjs',
   'src/kick-card.mjs',
@@ -82,7 +87,7 @@ export function zipStored(files) {
   end.writeUInt32LE(offset, 16);
   return Buffer.concat([...blocks, directory, end]);
 }
-export function hostedPackage(root, config, welcome = emptyWelcome()) {
+export function hostedPackage(root, config, welcome = emptyWelcome(), tickets = emptyTickets()) {
   config = validateSocial(config);
   const files = Object.fromEntries(
     HOSTED_FILES.map((name) => [name, fs.readFileSync(path.join(root, name))]),
@@ -111,6 +116,7 @@ export function hostedPackage(root, config, welcome = emptyWelcome()) {
         files['assets/welcome/backgrounds/' + id + '.jpg'] = library.bytes(id, guild.guildId);
     }
   files['config/welcome.json'] = JSON.stringify(welcome, null, 2);
+  files['config/tickets.json'] = JSON.stringify(validateTickets(tickets), null, 2);
   files['config/social-feeds.json'] = JSON.stringify(config, null, 2);
   return zipStored(files);
 }

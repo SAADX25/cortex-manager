@@ -227,7 +227,7 @@
         })
         .join(
           '',
-        )}</div>${kickMarkup(d, rooms)}<div class="panel welcome-actions">${validationIssue ? '<p class="welcome-validation-error" role="alert">' + esc((validationIssue.type === 'kick' ? t('kick.title') : validationIssue.type === 'join' ? t('welcome.welcome') : t('welcome.farewell')) + ': ' + t(validationIssue.key)) + '</p>' : ''}<p>${t('welcome.preview_sends_nothing_to_discord_settings_apply_on_the_host_after_updati')}</p><button class="btn btn-primary" id="saveWelcome" ${saving || uploading || loading || !saved ? 'disabled' : ''}>${icon('check')}${saving ? t('social.saving') : t('welcome.save_settings')}</button><button class="btn btn-ghost" id="exportWelcome" ${!saved || saving ? 'disabled' : ''}>${icon('log')}${t('social.download_discloud_package')}</button></div></div>`;
+        )}</div>${kickMarkup(d, rooms)}<div class="panel welcome-actions">${validationIssue ? '<p class="welcome-validation-error" role="alert">' + esc((validationIssue.type === 'kick' ? t('kick.title') : validationIssue.type === 'join' ? t('welcome.welcome') : t('welcome.farewell')) + ': ' + t(validationIssue.key)) + '</p>' : ''}<p>${t('welcome.preview_sends_nothing_to_discord_settings_apply_on_the_host_after_updati')}</p><button class="btn btn-primary" id="saveWelcome" ${saving || uploading || loading || !saved ? 'disabled' : ''}>${icon('check')}${saving ? t('social.saving') : t('welcome.save_settings')}</button><button class="btn btn-ghost" id="exportWelcome" ${!saved || saving ? 'disabled' : ''}>${icon('log')}${t('deployment.title')}</button></div></div>`;
     for (const id of ['kickEnabled', 'welcomeChannelkick', 'kickLanguage'])
       $('#' + id).disabled = saving || loading || !saved;
     $('#welcomeChannelkick').setAttribute('aria-invalid', String(validationIssue?.type === 'kick'));
@@ -455,18 +455,7 @@
       };
     };
     $('#exportWelcome').onclick = () => {
-      const url = '/api/social/package';
-      fetch(url, { headers: { 'X-Cortex-Key': apiKey } })
-        .then(async (r) => {
-          if (!r.ok) throw new Error(t('welcome.package_download_failed'));
-          const blob = await r.blob(),
-            link = document.createElement('a');
-          link.href = URL.createObjectURL(blob);
-          link.download = 'Cortex-Social-Discloud.zip';
-          link.click();
-          setTimeout(() => URL.revokeObjectURL(link.href), 1000);
-        })
-        .catch((e) => toast(e.message, 'error'));
+      go('deployment');
     };
   }
   window.CortexWelcome = { render: draw };

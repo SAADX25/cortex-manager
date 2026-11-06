@@ -1,6 +1,9 @@
 import { previewBatch, applyBatch, batchPublic } from './batch-editor.mjs';
 import { readPermissionSimulation } from './permission-simulator.mjs';
 import fs from 'node:fs';
+import path from 'node:path';
+import { createTicketStore } from './ticket-config.mjs';
+import { createTicketEngine } from './ticket-engine.mjs';
 import { validateCustomDesign } from './custom-design.mjs';
 import {
   previewRoleGrant,
@@ -9,7 +12,7 @@ import {
   readRoleMembers,
 } from './role-grants.mjs';
 import readline from 'node:readline';
-import { pathToFileURL } from 'node:url';
+import { pathToFileURL, fileURLToPath } from 'node:url';
 import { DiscordAPI, snapshot } from './api.mjs';
 import {
   P,
@@ -23,7 +26,6 @@ import {
 import { ROLES } from './design.mjs';
 import { roleProtection } from './safety.mjs';
 import { GatewaySession } from './gateway.mjs';
-import path from 'node:path';
 import { serverInventory, previewEdit, applyEdit, editSummary } from './editor.mjs';
 import { previewMessage, sendMessage, messagePreview } from './messages.mjs';
 import { readMemberCounts } from './member-counts.mjs';
@@ -105,7 +107,28 @@ export async function runDesktopWorker(
   }
   if (mode === 'online') {
     if (lines.closed) return;
-    const session = new GatewaySession(token);
+    const root = fileURLToPath(new URL('../', import.meta.url));
+    const ticketConfig = createTicketStore({ root }).read().config;
+    ticketConfig.guilds = ticketConfig.guilds.filter((g) => g.guildId === guildId);
+    let stopping = false;
+    const ticketAPI = new DiscordAPI(token);
+    const tickets = createTicketEngine({
+      api: ticketAPI,
+      responseAPI: new DiscordAPI(token),
+      config: ticketConfig,
+      stateFile: path.join(root, 'out', 'desktop-modern', 'ticket-state.json'),
+      isStopping: () => stopping,
+      onStatus: (event) => emit({ event: 'log', message: event.code, level: 'error' }),
+    });
+    const stopTickets = () => {
+      stopping = true;
+      session.stop();
+      void tickets.drain();
+    };
+    const session = new GatewaySession(token, { receiveInteractions: true });
+    session.on('interaction', (event) => {
+      void tickets.handle(event);
+    });
     session.on('status', (state) => {
       emit({ event: 'presence', ...state });
       if (state.status === 'error' && !session.running) {
@@ -116,17 +139,23 @@ export async function runDesktopWorker(
     lines.on('line', (line) => {
       try {
         if (JSON.parse(line).action === 'stop') {
-          session.stop();
+          stopTickets();
           lines.close();
         }
       } catch {}
     });
-    lines.on('close', () => session.stop());
+    lines.on('close', stopTickets);
     process.once('SIGTERM', () => {
-      session.stop();
+      stopTickets();
       lines.close();
     });
-    session.start();
+    try {
+      await tickets.register();
+    } catch {
+      lines.close();
+      throw new Error('تعذّر تسجيل أوامر التذاكر؛ تحقق من تثبيت البوت وصلاحيات التطبيق.');
+    }
+    if (!stopping) session.start();
     return;
   }
   lines.close();

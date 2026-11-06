@@ -1,6 +1,119 @@
 'use strict';
 window.CortexLocales ??= {};
 window.CortexLocales.en = Object.freeze({
+  'tickets.status_title': 'Ticket status and assigned staff',
+  'tickets.status_preview': 'Discord card appearance guide',
+  'tickets.status_help':
+    'The request card in the ticket channel updates when claimed and when resolution is confirmed, preserving the subject and description.',
+  'tickets.status_waiting': '🔴 Waiting for staff',
+  'tickets.status_waiting_help': 'A new request that no staff member has claimed yet.',
+  'tickets.status_claimed': '🟡 Claimed — in progress',
+  'tickets.status_claimed_help':
+    'Shows the staff member who clicked Claim ticket. Another staff member cannot take over the claim.',
+  'tickets.status_resolved': '🟢 Issue resolved',
+  'tickets.status_resolved_help':
+    'After confirmation, shows who confirmed the resolution. Conversation is preserved and the ordinary owner becomes read-only.',
+  'tickets.no_read_receipts':
+    'Discord does not provide a list of message readers to bots. The assigned name records an explicit claim; opening the channel does not count as claiming.',
+  'tickets.command_resolve':
+    'Confirms the issue is resolved and closes the ticket, turning the card green and recording the staff member. Also available through the ticket button.',
+  'ui.prepare_zip': 'Prepare ZIP',
+  'deployment.title': 'Prepare ZIP',
+  'deployment.intro':
+    'Prepare one package with the latest saved bot settings, then upload it to update your Discloud application.',
+  'deployment.current': 'Package matches the latest settings',
+  'deployment.changed': 'Prepare a new package for the current changes',
+  'deployment.not_built': 'No package prepared yet',
+  'deployment.refresh': 'Refresh saved settings',
+  'deployment.loading': 'Reading saved settings…',
+  'deployment.demo': 'This is a demonstration. Package preparation is available in normal mode.',
+  'deployment.included': 'Bot features included in the package',
+  'deployment.save_first':
+    'Save changes in each section before preparing a ZIP. The package includes all saved server settings; only enabled features run.',
+  'deployment.feature': 'Feature',
+  'deployment.saved': 'Saved settings',
+  'deployment.enabled': 'Enabled',
+  'deployment.settings': 'Settings',
+  'deployment.edit': 'Open section',
+  'deployment.social': 'Streams & videos',
+  'deployment.direct_title': 'Server changes in the control panel',
+  'deployment.direct_help':
+    'Channel, role, permission and server design changes are applied to Discord after review and confirmation in their sections. They do not require a ZIP upload. Drafts in the change workspace still need to be applied.',
+  'deployment.changes': 'Change workspace',
+  'deployment.redesign': 'Server redesign',
+  'deployment.prepare': 'Prepare a package for your application',
+  'deployment.app_id': 'Discloud application ID',
+  'deployment.target_help':
+    'The application ID is at the end of its Discloud dashboard URL. Upload using the update option for your existing application.',
+  'deployment.build': 'Prepare ZIP with latest settings',
+  'deployment.building': 'Preparing and checking the package…',
+  'deployment.download': 'Download ready ZIP',
+  'deployment.downloading': 'Downloading…',
+  'deployment.open_dashboard': 'Open my Discloud application',
+  'deployment.empty': 'Save ticket, welcome or notification settings before preparing a package.',
+  'deployment.missing_files':
+    'Bot files or message backgrounds are missing. Check project files and saved images.',
+  'deployment.last_build': 'Last prepared',
+  'deployment.filename': 'File name',
+  'deployment.fingerprint': 'SHA-256 verification fingerprint',
+  'deployment.built': 'Package ready. Download the ZIP and upload it to update your application.',
+  'deployment.upload_steps': 'Update the hosted bot',
+  'deployment.step_save': 'Save your changes in each bot feature section.',
+  'deployment.step_build': 'Prepare the ZIP, then download the ready file.',
+  'deployment.step_upload':
+    'Open your Discloud application and upload the ZIP using Update files or Commit for the existing application.',
+  'deployment.step_restart':
+    'After updating, check that the application is running and review its logs. Stop the local instance when using the hosted bot.',
+  'deployment.environment': 'Required environment variable names in Discloud:',
+  'deployment.members_intent':
+    'Enable Server Members Intent in the Discord Developer Portal for membership messages.',
+  'deployment.audit_log': 'Kick notifications require View Audit Log permission in the server.',
+  'deployment.preserve_data':
+    'Keep the hosted data/ directory and existing environment variables when updating. The package excludes tokens, ticket records and delivery history, and does not upload itself automatically.',
+  'ui.support_tickets': 'Support tickets',
+  'tickets.title': 'Support tickets',
+  'tickets.intro':
+    'Private requests between members and staff. Choose support roles and channels, then use bot commands or the open-ticket button.',
+  'tickets.settings': 'Ticket settings and permissions',
+  'tickets.panel_channel': 'Help request panel channel',
+  'tickets.category': 'Category for new tickets',
+  'tickets.language': 'Bot message language',
+  'tickets.staff_roles': 'Support staff roles',
+  'tickets.staff_help':
+    'Choose one or more roles. These roles can view tickets, publish the panel, claim tickets and close them.',
+  'tickets.requester_roles': 'Roles allowed to open tickets',
+  'tickets.requester_help':
+    'Leave empty to allow all members, or select the roles allowed to submit requests. Each member can have one open ticket.',
+  'tickets.privacy':
+    'Tickets are visible to their owner, support roles and the bot. The server owner and Administrator members retain access under Discord rules. Closing preserves the conversation and makes ordinary ticket owners read-only.',
+  'tickets.permissions':
+    'The bot needs Manage Channels, Manage Roles, View Channel, Send Messages, Embed Links and Read Message History. To ping a support role, make it mentionable or grant the bot permission to mention roles.',
+  'tickets.activation':
+    'After saving, stop and restart the local bot connection to register commands and apply settings, or export and update the hosted package. Run only one instance. A support role can publish the request panel with /ticket-panel.',
+  'tickets.commands': 'Bot commands',
+  'tickets.command_open':
+    'Opens a subject and description form, then creates a private channel and alerts the support team.',
+  'tickets.command_panel':
+    'Publishes the ticket button in the selected channel. Support roles and the server owner only.',
+  'tickets.command_claim':
+    'Claims the ticket from inside its channel and identifies the staff member following up.',
+  'tickets.command_close':
+    'Asks to confirm resolution and closing. Confirmation turns the card green, preserves the conversation and makes the ordinary owner read-only.',
+  'tickets.export_saved':
+    'Exports include saved settings. Save your changes first. Local settings do not automatically update the hosted bot.',
+  'tickets.reload': 'Reload saved settings',
+  'tickets.saved':
+    'Saved. Reconnect the local bot or export and update the hosted package to activate settings.',
+  'tickets.confirm': 'Review ticket settings before saving',
+  'tickets.everyone': 'All members',
+  'tickets.choose': 'Choose an option',
+  'tickets.unavailable': 'Unavailable in current data',
+  'tickets.load_server': 'Load server data in connection settings to select channels and roles.',
+  'tickets.required':
+    'Choose a panel channel, ticket category and at least one support role before enabling tickets.',
+  'tickets.role_limit': 'Choose at most 20 roles in each list.',
+  'desktop_ui.comfortable': 'Comfortable layout — switch to compact',
+  'desktop_ui.compact': 'Compact layout — switch to comfortable',
   'simulator.title': 'Access inspector',
   'simulator.subtitle':
     'See what a member can do in a channel and why access is allowed or denied.',

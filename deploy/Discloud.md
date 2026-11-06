@@ -1,5 +1,9 @@
 # Cortex Social Bot — Discloud
 
+## تجهيز الحزمة الموحدة
+
+افتح **تجهيز ملف ZIP** من أدوات البوت في البرنامج. احفظ التعديلات في أقسامها، ثم اضغط **تجهيز ZIP بأحدث الإعدادات** و**تنزيل ملف ZIP الجاهز**. رابط **فتح تطبيقي على Discloud** موجّه افتراضيًا للتطبيق `1793358824529` ويمكن تغيير رقمه. ارفع `cortex-manager.zip` باستخدام تحديث ملفات التطبيق الحالي أو Commit. لا تُنشئ تطبيقًا آخر بدل التطبيق الذي تريد تحديثه. احتفظ بمجلد `data/` ومتغيرات البيئة في الاستضافة. تُظهر الصفحة متغيرات البيئة المطلوبة بأسمائها، وحالة الحزمة مقارنة بآخر الإعدادات المحفوظة.
+
 ## العربية
 
 النشر اليدوي في لوحة ويندوز يجلب ثمنيل منشور Instagram تلقائيًا عند المعاينة، دون اختيار صورة من جهازك. يُقرأ الثمنيل العام من بيانات المنشور ثم يُرفع كصورة مرفقة بعد تأكيدك؛ يلزم Attach Files. إذا كان المنشور خاصًا أو حجب إنستغرام الوصول، تظهر حالة واضحة بأن المعاينة تحتوي رابطًا فقط. الحد الأقصى للصورة 2MB، ولا يُستخدم تسجيل دخول أو كوكيز أو خدمات وسيطة. التنبيهات التلقائية المستضافة تبقى روابط نصية.
@@ -106,3 +110,11 @@ Keep data/kick-deliveries.json with the existing data files across updates. Dura
 العربي: فعّل «إشعارات الطرد» وحدد غرفة للإدارة ولغة الإشعار ثم احفظ وصدّر حزمة جديدة وارفعها إلى التطبيق الحالي. يلزم View Audit Log وصلاحيات إرسال الرسالة في الغرفة. لا تحتاج صلاحية الطرد. يظهر منفذ الطرد والسبب فقط من حدث سجل التدقيق المؤكد؛ لا ينسب البوت المغادرة العادية لشخص بالتخمين.
 
 Kick notifications now send a PNG using the same server farewell background and text colors, with a red frame and separate member/moderator/reason rows. Grant Attach Files. Long visual rows are shortened; the full recorded reason (up to the supported 1000-character input bound), actor IDs and event time accompany the attachment as text. Missing attachment permission or rendering failure falls back to the existing structured Embed. Preview images use fictional examples and never post to Discord. Export and redeploy after updating.
+
+## Support tickets
+
+Configure and save **Support tickets** in the desktop app before exporting. The package includes `config/tickets.json` and registers `/ticket`, `/ticket-panel`, `/ticket-claim`, `/ticket-close` and `/ticket-resolve` on startup for enabled servers. The bot must be installed with the `bot` and `applications.commands` scopes. No privileged intents are needed for tickets alone. A configured support role or the actual server owner can run `/ticket-panel` to publish the button in the selected request channel. The bot needs Manage Channels, Manage Roles, View Channel, Send Messages, Embed Links and Read Message History. To ping support roles, make them mentionable or grant the relevant mention permission.
+
+Ticket cards are red while waiting, yellow when a staff member claims them and green after explicit resolution confirmation. The same card records who claimed the ticket and who confirmed resolution. Read Message History allows the bot to preserve the original issue while editing its own status card. Preserve `data/tickets.json` to retain message IDs and staff assignments across updates. Existing open cards are upgraded on the next staff action; older closed records do not gain invented resolution metadata.
+
+Keep `data/tickets.json` across deployments and run one instance only. Do not run the local ticket connection simultaneously with the hosted bot. Settings changes require a fresh export/deployment. Ticket close preserves the channel and conversation; this feature does not delete channels or export transcripts.

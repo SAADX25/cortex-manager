@@ -15,6 +15,8 @@ import { CONFIRMATION } from '../src/safety.mjs';
 import { diagnostics } from '../src/desktop-worker.mjs';
 import { sample, ID } from './helpers/fake.mjs';
 import { defaultDesign } from '../src/custom-design.mjs';
+import { HOSTED_FILES } from '../src/social-package.mjs';
+import { createTicketStore, ticketDefaults } from '../src/ticket-config.mjs';
 
 function controlledRunner() {
   const calls = [];
@@ -97,6 +99,125 @@ async function setup(t, options = {}) {
   return { ...bridge, ...control, root, base, request, state, action, settled };
 }
 const credentials = { token: 'desktop-test-token-never-use', guildId: ID };
+
+test('deployment section authenticates, builds a current archive and rejects stale or foreign downloads without Discord workers', async (t) => {
+  const s = await setup(t),
+    project = fileURLToPath(new URL('../', import.meta.url));
+  for (const file of HOSTED_FILES) {
+    const dest = path.join(s.root, file);
+    fs.mkdirSync(path.dirname(dest), { recursive: true });
+    fs.copyFileSync(path.join(project, file), dest);
+  }
+  const store = createTicketStore({ root: s.root });
+  store.save({
+    baseRevision: store.read().revision,
+    confirmAutomatic: true,
+    config: {
+      version: 1,
+      guilds: [
+        {
+          ...ticketDefaults(ID),
+          enabled: true,
+          panelChannelId: '777777777777777777',
+          categoryId: '666666666666666666',
+          staffRoleIds: ['555555555555555555'],
+        },
+      ],
+    },
+  });
+  assert.equal(
+    (await s.request('/api/deployment', { headers: { 'X-Cortex-Key': 'bad' } })).status,
+    401,
+  );
+  const status = await (await s.request('/api/deployment')).json();
+  assert.equal(status.canBuild, true);
+  const build = (body) =>
+    s.request('/api/deployment/build', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  assert.equal(
+    (await build({ appId: '1793358824529', baseRevision: status.revision, token: 'never' })).status,
+    400,
+  );
+  assert.equal((await build({ appId: '1793358824529', baseRevision: '0'.repeat(64) })).status, 409);
+  const result = await build({ appId: '1793358824529', baseRevision: status.revision });
+  assert.equal(result.status, 200);
+  const ready = await result.json();
+  assert.equal(ready.lastBuild.stale, false);
+  const archive = await s.request(ready.lastBuild.downloadURL);
+  assert.equal(archive.status, 200);
+  assert.equal(archive.headers.get('content-type'), 'application/zip');
+  assert.equal(Buffer.from(await archive.arrayBuffer()).readUInt32LE(0), 0x04034b50);
+  assert.equal((await s.request('/api/deployment/download?sha256=' + '0'.repeat(64))).status, 409);
+  store.save({ baseRevision: store.read().revision, config: { version: 1, guilds: [] } });
+  assert.equal((await s.request(ready.lastBuild.downloadURL)).status, 409);
+  assert.equal(s.calls.length, 0);
+});
+
+test('demo deployment overview is read-only and cannot build or download a package', async (t) => {
+  const s = await setup(t, { demo: true });
+  const status = await (await s.request('/api/deployment')).json();
+  assert.equal(status.canBuild, false);
+  assert.equal(status.demo, true);
+  assert.equal(
+    (
+      await s.request('/api/deployment/build', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
+      })
+    ).status,
+    403,
+  );
+  assert.equal((await s.request('/api/deployment/download?sha256=' + '0'.repeat(64))).status, 403);
+});
+
+test('ticket configuration bridge authenticates, validates, confirms and isolates local settings from demo', async (t) => {
+  const s = await setup(t);
+  const initial = await (await s.request('/api/tickets')).json();
+  const config = {
+    version: 1,
+    guilds: [
+      {
+        guildId: ID,
+        enabled: true,
+        panelChannelId: '777777777777777777',
+        categoryId: '666666666666666666',
+        staffRoleIds: ['555555555555555555'],
+        requesterRoleIds: [],
+        language: 'ar',
+      },
+    ],
+  };
+  const save = (body, headers = {}) =>
+    s.request('/api/tickets', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...headers },
+      body: JSON.stringify(body),
+    });
+  assert.equal((await save({ config, baseRevision: initial.revision })).status, 400);
+  assert.equal(
+    (
+      await save(
+        { config, baseRevision: initial.revision, confirmAutomatic: true },
+        { 'X-Cortex-Key': 'bad' },
+      )
+    ).status,
+    401,
+  );
+  assert.equal(
+    (await save({ config, baseRevision: initial.revision, confirmAutomatic: true })).status,
+    200,
+  );
+  assert.equal(
+    (await save({ config, baseRevision: initial.revision, confirmAutomatic: true })).status,
+    409,
+  );
+  assert.deepEqual((await (await s.request('/api/tickets')).json()).config, config);
+  assert.equal(s.calls.length, 0);
+});
 
 test('large image previews cross the authenticated bridge while ordinary actions keep their original size limit', async (t) => {
   const s = await setup(t, { demo: true }),
