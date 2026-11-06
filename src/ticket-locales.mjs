@@ -1,9 +1,31 @@
 export const ticketCopy = {
   ar: {
+    cardTitle: 'طلب دعم فني',
+    issueDetails: '📝 تفاصيل المشكلة',
+    requestInfo: '👤 معلومات صاحب الطلب',
+    noIssueDetails: 'لا توجد تفاصيل محفوظة لهذا الطلب.',
+    chooseLanguage: '🌐 اختر لغة الدعم للمتابعة\nChoose your support language to continue',
+    genderLabel: 'الجنس',
+    genderMale: 'ذكر',
+    genderFemale: 'أنثى',
+    genderPlaceholder: 'اختر من القائمة',
+    ageLabel: 'العمر بالسنوات',
+    agePlaceholder: 'مثال: 24',
+    ageYears: '{age} سنة',
+    profileHelp: 'تُرفق هذه البيانات داخل التذكرة لفريق الدعم.',
+    wrongChannel: 'فتح الطلبات ونشر لوحة الدعم مسموح فقط في قناة طلب المساعدة المحددة. انتقل إلى:',
+    formExpired:
+      'انتهت صلاحية هذا النموذج أو تغيّرت الخطوة. افتح طلبًا جديدًا من قناة طلب المساعدة واختر اللغة من جديد.',
+    requestProcessing: 'طلبك قيد المعالجة الآن. انتظر نتيجة الطلب الحالي قبل فتح نموذج آخر.',
+    invalidForm:
+      'أكمل الجنس والعمر وعنوان المشكلة وتفاصيلها. افتح نموذجًا جديدًا من قناة طلب المساعدة.',
+    invalidGender: 'اختر ذكرًا أو أنثى من القائمة، ثم أعد إرسال طلبك بنموذج جديد.',
+    invalidAge: 'اكتب العمر كعدد صحيح من 1 إلى 120 سنة، ثم افتح النموذج من جديد.',
     supportBrand: 'CORTEX • مركز الدعم',
     panelTitle: '🎫 كيف نقدر نساعدك؟',
-    panelStepsLabel: '📝 افتح طلبك بخطوتين',
-    panelSteps: 'اضغط «فتح تذكرة دعم»، ثم اكتب عنوانًا واضحًا وتفاصيل المشكلة.',
+    panelStepsLabel: '📝 ابدأ طلب الدعم',
+    panelSteps:
+      'اضغط «فتح تذكرة دعم»، واختر العربية أو الإنجليزية، ثم أدخل الجنس والعمر وعنوان المشكلة وتفاصيلها.',
     panelFollowupLabel: '🤝 متابعة مع فريق الدعم',
     panelFollowup:
       'سنفتح قناة مخصصة لطلبك. سيظهر فيها اسم المسؤول عند الاستلام وحالة الطلب حتى الحل.',
@@ -12,7 +34,7 @@ export const ticketCopy = {
     claimedButton: 'تم الاستلام',
     resolvedButton: 'تم حل المشكلة',
     closedButton: 'التذكرة مغلقة',
-    commandOpen: 'افتح تذكرة دعم خاصة واكتب تفاصيل طلبك',
+    commandOpen: 'اختر لغة الدعم واملأ بيانات طلبك من قناة طلب المساعدة المحددة',
     commandPanel: 'انشر لوحة فتح تذاكر الدعم في القناة المحددة — للإدارة',
     commandClaim: 'استلم التذكرة الحالية لتظهر باسمك — لفريق الدعم',
     commandClose: 'أكد حل المشكلة وأغلق التذكرة مع حفظ المحادثة — لفريق الدعم',
@@ -55,10 +77,35 @@ export const ticketCopy = {
       'تم حفظ الإجراء، لكن تعذّر تحديث بطاقة الحالة. أعد تنفيذ الأمر لتحديثها واطلب من الإدارة مراجعة صلاحيات البوت إذا استمر الخطأ.',
   },
   en: {
+    cardTitle: 'Support request',
+    issueDetails: '📝 Issue details',
+    requestInfo: '👤 Requester information',
+    noIssueDetails: 'No issue details were saved for this request.',
+    chooseLanguage: '🌐 اختر لغة الدعم للمتابعة\nChoose your support language to continue',
+    genderLabel: 'Gender',
+    genderMale: 'Male',
+    genderFemale: 'Female',
+    genderPlaceholder: 'Select an option',
+    ageLabel: 'Age in years',
+    agePlaceholder: 'For example: 24',
+    ageYears: '{age} years',
+    profileHelp: 'These details accompany your ticket for the support team.',
+    wrongChannel:
+      'Requests and support panels are only allowed in the configured help request channel. Go to:',
+    formExpired:
+      'This form expired or its step changed. Start a new request in the help request channel and choose your language again.',
+    requestProcessing:
+      'Your request is being processed. Wait for its result before opening another form.',
+    invalidForm:
+      'Complete gender, age, subject and issue details. Open a new form in the help request channel.',
+    invalidGender:
+      'Choose Male or Female from the list, then submit your request using a new form.',
+    invalidAge: 'Enter age as a whole number from 1 to 120 years, then open the form again.',
     supportBrand: 'CORTEX • SUPPORT DESK',
     panelTitle: '🎫 How can we help?',
-    panelStepsLabel: '📝 Open your request in two steps',
-    panelSteps: 'Select Open a support ticket, then enter a clear subject and describe the issue.',
+    panelStepsLabel: '📝 Start your support request',
+    panelSteps:
+      'Select Open a support ticket, choose Arabic or English, then provide gender, age, a subject and issue details.',
     panelFollowupLabel: '🤝 Follow up with the support team',
     panelFollowup:
       'Your request gets a dedicated channel showing the assigned staff member and status through resolution.',
@@ -67,7 +114,8 @@ export const ticketCopy = {
     claimedButton: 'Claimed',
     resolvedButton: 'Issue resolved',
     closedButton: 'Ticket closed',
-    commandOpen: 'Open a private support ticket and describe your request',
+    commandOpen:
+      'Choose a support language and complete your request in the configured help channel',
     commandPanel: 'Publish the support ticket panel in the configured channel (staff only)',
     commandClaim: 'Claim this ticket and show yourself as its assigned staff member (staff only)',
     commandClose:

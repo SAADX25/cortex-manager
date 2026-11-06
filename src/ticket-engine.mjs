@@ -4,7 +4,13 @@ import { P, has, botPermissions, effectiveChannelPermissions, overwrite } from '
 import { atomicJSON, snowflake } from './social-config.mjs';
 import { validateTickets } from './ticket-config.mjs';
 import { ticketCopy } from './ticket-locales.mjs';
-import { ticketStatusCard, ticketPanelCard, isTicketStatusMessage } from './ticket-status.mjs';
+import {
+  ticketStatusCard,
+  ticketStatusEdit,
+  ticketPanelCard,
+  isTicketStatusMessage,
+} from './ticket-status.mjs';
+import { createTicketIntake, ticketIntakeModal, readTicketIntake } from './ticket-intake.mjs';
 
 const prefix = 'cortex:ticket:';
 const commands = [
@@ -69,6 +75,12 @@ function readState(file) {
       !['sending', 'sent', 'unknown'].includes(t.messageAttempt)
     )
       throw new Error('Invalid ticket status delivery.');
+    if (t.language !== undefined && !['ar', 'en'].includes(t.language))
+      throw new Error('Invalid ticket language.');
+    if (t.gender !== undefined && !['male', 'female'].includes(t.gender))
+      throw new Error('Invalid ticket gender.');
+    if (t.age !== undefined && (!Number.isInteger(t.age) || t.age < 1 || t.age > 120))
+      throw new Error('Invalid ticket age.');
   }
   if (Object.entries(value.seen).some(([id, time]) => !snowflake(id) || !Number.isFinite(time)))
     throw new Error('Invalid ticket interaction state.');
@@ -88,6 +100,7 @@ export function createTicketEngine({
 }) {
   config = validateTickets(config);
   const state = readState(stateFile);
+  const intake = createTicketIntake({ now });
   const inFlight = new Set();
   let queue = Promise.resolve(),
     pending = 0,
@@ -128,7 +141,7 @@ export function createTicketEngine({
       persist();
       await api.patch(
         `/channels/${ticket.channelId}/messages/${message.id}`,
-        ticketStatusCard(ticket, ticketId, copy, message.embeds?.[0]),
+        ticketStatusEdit(ticket, ticketId, copy, message),
       );
       return;
     }
@@ -139,7 +152,11 @@ export function createTicketEngine({
     try {
       const payload = ticketStatusCard(ticket, ticketId, copy, original);
       if (notify) {
-        payload.content = `📩 ${copy.notified}\n${ticket.staffRoleIds.map((id) => `<@&${id}>`).join(' ')}`;
+        payload.components.unshift({
+          type: 10,
+          id: 100,
+          content: `📩 ${copy.notified}\n${ticket.staffRoleIds.map((id) => `<@&${id}>`).join(' ')}`,
+        });
         payload.allowed_mentions = {
           parse: [],
           roles: ticket.staffRoleIds,
@@ -208,67 +225,28 @@ export function createTicketEngine({
       !g.requesterRoleIds.length || member.roles?.some((id) => g.requesterRoleIds.includes(id))
     );
   }
-  function modal(c) {
-    return {
-      custom_id: prefix + 'submit',
-      title: c.modal,
-      components: [
-        {
-          type: 18,
-          label: c.subject,
-          component: {
-            type: 4,
-            custom_id: 'subject',
-            style: 1,
-            min_length: 1,
-            max_length: 100,
-            required: true,
-          },
-        },
-        {
-          type: 18,
-          label: c.description,
-          component: {
-            type: 4,
-            custom_id: 'description',
-            style: 2,
-            min_length: 1,
-            max_length: 1500,
-            required: true,
-          },
-        },
-      ],
-    };
-  }
+  const wrongChannel = (c, g) => `${c.wrongChannel} <#${g.panelChannelId}>`;
   function remember(i) {
     state.seen[i.id] = now();
     const entries = Object.entries(state.seen);
     for (const [id] of entries.slice(0, Math.max(0, entries.length - 2000))) delete state.seen[id];
     persist();
   }
-  async function processInteraction(i, g, c, action) {
+  async function processInteraction(i, g, c, action, intakeSession) {
     if (isStopping() || state.seen[i.id]) return;
     remember(i);
+    if (['submit', 'panel'].includes(action) && i.channel_id !== g.panelChannelId)
+      return reply(i, wrongChannel(c, g));
     const { s, member } = await context(i, g);
     const staff = isStaff(member, g, s);
     if (action !== 'submit' && !staff) return reply(i, c.denied);
     if (action === 'submit') {
       if (!canRequest(member, g)) return reply(i, c.denied);
       validateTargets(g, s);
-      const values = (i.data.components ?? []).flatMap((r) =>
-        r.component ? [r.component] : (r.components ?? []),
-      );
-      const subject = values.find((v) => v.custom_id === 'subject')?.value;
-      const description = values.find((v) => v.custom_id === 'description')?.value;
-      if (
-        typeof subject !== 'string' ||
-        !subject.trim() ||
-        subject.length > 100 ||
-        typeof description !== 'string' ||
-        !description.trim() ||
-        description.length > 1500
-      )
-        return reply(i, c.failed);
+      if (!intakeSession || intakeSession.expiresAt <= now()) return reply(i, c.formExpired);
+      const details = readTicketIntake(i.data);
+      if (details.error) return reply(i, c[details.error]);
+      const { subject, description, gender, age } = details;
       const previous = Object.entries(state.tickets).find(
         ([, t]) => t.guildId === g.guildId && t.ownerId === member.user.id && t.status !== 'closed',
       );
@@ -285,7 +263,13 @@ export function createTicketEngine({
             persist();
           }
         }
-        return reply(i, t.channelId ? `${c.exists} <#${t.channelId}>` : c.uncertain);
+        const existingChannel = s.channels.find((ch) => ch.id === t.channelId);
+        return reply(
+          i,
+          t.channelId && existingChannel?.parent_id === g.categoryId
+            ? `${c.exists} <#${t.channelId}>`
+            : c.uncertain,
+        );
       }
       const category = s.channels.find((ch) => ch.id === g.categoryId);
       if (
@@ -302,6 +286,9 @@ export function createTicketEngine({
         staffRoleIds: [...g.staffRoleIds],
         claimedBy: null,
         createdAt: now(),
+        language: intakeSession.language,
+        gender,
+        age,
       };
       state.tickets[i.id] = ticket;
       persist();
@@ -319,7 +306,8 @@ export function createTicketEngine({
             overwrite(s.bot.id, 1, userAccess | P.ManageChannels | P.ManageRoles),
           ],
         });
-        if (!snowflake(channel?.id)) throw new Error('Invalid created ticket.');
+        if (!snowflake(channel?.id) || channel.type !== 0 || channel.parent_id !== g.categoryId)
+          throw new Error('Invalid created ticket destination.');
       } catch (error) {
         // A conclusive client rejection did not create a channel. Other outcomes need reconciliation.
         if (/HTTP 4\d\d\b/.test(error.message) && !/HTTP 429\b/.test(error.message))
@@ -357,8 +345,12 @@ export function createTicketEngine({
     if (!entry) return reply(i, c.notTicket);
     const [ticketId, ticket] = entry;
     const ticketChannel = s.channels.find((ch) => ch.id === ticket.channelId && ch.type === 0);
-    if (ticketChannel?.topic !== `cortex-ticket:${ticketId}:${ticket.ownerId}`)
+    if (
+      ticketChannel?.topic !== `cortex-ticket:${ticketId}:${ticket.ownerId}` ||
+      ticketChannel.parent_id !== g.categoryId
+    )
       return reply(i, c.notTicket);
+    c = ticketCopy[ticket.language ?? g.language];
     if (action === 'claim') {
       if (ticket.claimedBy)
         return reply(
@@ -412,6 +404,10 @@ export function createTicketEngine({
     }
   }
   async function handle(i) {
+    const intakeMatch =
+      typeof i?.data?.custom_id === 'string'
+        ? /^cortex:ticket:(language|submit):(ar|en):([a-f0-9]{24})$/.exec(i.data.custom_id)
+        : null;
     const action =
       i?.type === 2
         ? {
@@ -422,10 +418,14 @@ export function createTicketEngine({
             'ticket-resolve': 'close',
           }[i.data?.name]
         : [3, 5].includes(i?.type) && i.data?.custom_id?.startsWith(prefix)
-          ? i.data.custom_id.slice(prefix.length)
+          ? intakeMatch
+            ? intakeMatch[1]
+            : i.data.custom_id.slice(prefix.length)
           : null;
     if (
-      !['open', 'submit', 'panel', 'claim', 'close', 'confirm-close'].includes(action) ||
+      !['open', 'language', 'submit', 'panel', 'claim', 'close', 'confirm-close'].includes(
+        action,
+      ) ||
       !snowflake(i.id) ||
       !snowflake(i.application_id) ||
       !snowflake(i.guild_id) ||
@@ -435,29 +435,93 @@ export function createTicketEngine({
       !/^[\w.-]{1,256}$/.test(i.token) ||
       (applicationId && i.application_id !== applicationId) ||
       (action === 'submit' ? i.type !== 5 : i.type === 5) ||
+      (action === 'language' && i.type !== 3) ||
       isStopping() ||
       inFlight.has(i.id) ||
       state.seen[i.id]
     )
       return;
     const g = config.guilds.find((g) => g.guildId === i.guild_id);
-    const c = ticketCopy[g?.language ?? 'ar'];
+    const c = ticketCopy[intakeMatch?.[2] ?? g?.language ?? 'ar'];
+    let intakeSession;
     inFlight.add(i.id);
     try {
       if (!g?.enabled)
         return await respond(i, { content: c.disabled, flags: 64, allowed_mentions: quiet });
+      if (
+        ['open', 'language', 'submit', 'panel'].includes(action) &&
+        i.channel_id !== g.panelChannelId
+      )
+        return await respond(i, {
+          content: wrongChannel(c, g),
+          flags: 64,
+          allowed_mentions: quiet,
+        });
       if (action === 'open') {
         if (!canRequest(i.member, g))
           return await respond(i, { content: c.denied, flags: 64, allowed_mentions: quiet });
-        return await respond(i, modal(c), 9);
+        const started = intake.begin(i, g);
+        if (started.error)
+          return await respond(i, {
+            content: c[started.error],
+            flags: 64,
+            allowed_mentions: quiet,
+          });
+        try {
+          return await respond(i, {
+            content: c.chooseLanguage,
+            flags: 64,
+            allowed_mentions: quiet,
+            components: [
+              row(
+                button(`language:ar:${started.session.id}`, 'العربية'),
+                button(`language:en:${started.session.id}`, 'English'),
+              ),
+            ],
+          });
+        } catch (error) {
+          intake.release(started.session);
+          throw error;
+        }
+      }
+      if (action === 'language') {
+        if (!canRequest(i.member, g))
+          return await respond(i, { content: c.denied, flags: 64, allowed_mentions: quiet });
+        const selected = intake.select(i, g, intakeMatch?.[3], intakeMatch?.[2]);
+        if (selected.error)
+          return await respond(i, {
+            content: c[selected.error],
+            flags: 64,
+            allowed_mentions: quiet,
+          });
+        try {
+          return await respond(
+            i,
+            ticketIntakeModal(c, selected.session.language, selected.session.id),
+            9,
+          );
+        } catch (error) {
+          intake.release(selected.session);
+          throw error;
+        }
       }
       if (pending >= 100)
         return await respond(i, { content: c.queued, flags: 64, allowed_mentions: quiet });
+      if (action === 'submit') {
+        const submission = intake.submit(i, g, intakeMatch?.[3], intakeMatch?.[2]);
+        if (submission.error)
+          return await respond(i, {
+            content: c[submission.error],
+            flags: 64,
+            allowed_mentions: quiet,
+          });
+        intakeSession = submission.session;
+      }
       pending++;
       try {
         // Acknowledge immediately, before waiting for reads or the serialized work queue.
         await respond(i, { flags: 64 }, 5);
-        const work = queue.then(() => processInteraction(i, g, c, action));
+        const work = queue.then(() => processInteraction(i, g, c, action, intakeSession));
         queue = work.catch(() => {});
         await work;
       } catch {
@@ -473,6 +537,7 @@ export function createTicketEngine({
     } catch {
       log('TICKET_ACKNOWLEDGEMENT_FAILED');
     } finally {
+      intake.release(intakeSession);
       inFlight.delete(i.id);
     }
   }

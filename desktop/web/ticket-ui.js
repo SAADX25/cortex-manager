@@ -93,6 +93,7 @@
       <div class="panel-body"><div class="form-grid"><div class="field"><label for="ticketPanelChannel">${t('tickets.panel_channel')}</label><select id="ticketPanelChannel">${options(channels, d.panelChannelId)}</select></div>
       <div class="field"><label for="ticketCategory">${t('tickets.category')}</label><select id="ticketCategory">${options(categories, d.categoryId)}</select></div>
       <div class="field"><label for="ticketLanguage">${t('tickets.language')}</label><select id="ticketLanguage"><option value="ar" ${d.language === 'ar' ? 'selected' : ''}>العربية</option><option value="en" ${d.language === 'en' ? 'selected' : ''}>English</option></select></div></div>
+      <div class="notice">${icon('eye')}<div>${t('tickets.intake_help')}</div></div>
       <fieldset class="ticket-role-fieldset"><legend>${t('tickets.staff_roles')}</legend><p class="field-help">${t('tickets.staff_help')}</p>${rolesMarkup(roles, d, 'staffRoleIds')}</fieldset>
       <fieldset class="ticket-role-fieldset"><legend>${t('tickets.requester_roles')}</legend><p class="field-help">${t('tickets.requester_help')}</p>${rolesMarkup(roles, d, 'requesterRoleIds')}</fieldset>
       <p class="field-help">${t('tickets.privacy')}</p><p class="field-help">${t('tickets.permissions')}</p>

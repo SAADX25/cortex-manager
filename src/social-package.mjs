@@ -11,6 +11,7 @@ export const HOSTED_FILES = [
   'src/ticket-engine.mjs',
   'src/ticket-locales.mjs',
   'src/ticket-status.mjs',
+  'src/ticket-intake.mjs',
   'src/welcome-card.mjs',
   'src/kick-notifications.mjs',
   'src/kick-card.mjs',

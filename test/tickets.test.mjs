@@ -10,13 +10,18 @@ import { createTicketStore, ticketDefaults, validateTickets } from '../src/ticke
 import { startHostedBot, hostedStartupDiagnostic } from '../src/hosted-bot.mjs';
 import { GatewaySession } from '../src/gateway.mjs';
 import { DiscordAPI } from '../src/api.mjs';
-import { TICKET_COLORS } from '../src/ticket-status.mjs';
+import { TICKET_COLORS, IS_COMPONENTS_V2, ticketCardIssue } from '../src/ticket-status.mjs';
 import { P } from '../src/permissions.mjs';
 import { sample, fakeServer, ID, BOT, BOT_ROLE, LEGACY, MEMBER, OWNER } from './helpers/fake.mjs';
 
 const STAFF = '888888888888888889',
   PANEL = '777777777777777777',
   CATEGORY = '666666666666666666';
+const cardContainer = (message) => message.components.find((c) => c.type === 17 && c.id === 1);
+const cardText = (message, id) =>
+  cardContainer(message).components.find((c) => c.type === 10 && c.id === id)?.content;
+const cardButtons = (message) =>
+  cardContainer(message).components.find((c) => c.type === 1).components;
 const settings = (extra = {}) => ({
   ...ticketDefaults(ID),
   enabled: true,
@@ -43,6 +48,7 @@ function harness(t, extra = {}) {
     logs = [];
   const messages = new Map();
   const registrations = [];
+  let clock = Date.now();
   server.state.members.push({ id: STAFF, roles: [LEGACY] });
   const api = {
     async get(p) {
@@ -83,6 +89,9 @@ function harness(t, extra = {}) {
         registrations.push(structuredClone(b));
         return { id: '123456789012345678', ...b };
       }
+      if (p.endsWith('/messages') && b.flags & IS_COMPONENTS_V2)
+        for (const field of ['content', 'embeds', 'poll', 'sticker_ids'])
+          assert.ok(!Object.hasOwn(b, field), 'V2 create must omit ' + field);
       const result = await server.api.call('POST', p, b);
       const channelId = p.match(/^\/channels\/(\d+)\/messages$/)?.[1];
       if (channelId)
@@ -98,6 +107,14 @@ function harness(t, extra = {}) {
       const messageId = p.match(/^\/channels\/\d+\/messages\/(\d+)$/)?.[1];
       if (messageId) {
         if (!messages.has(messageId)) throw new Error('HTTP 404');
+        const previous = messages.get(messageId);
+        if (b.flags & IS_COMPONENTS_V2 && !(previous.flags & IS_COMPONENTS_V2)) {
+          assert.equal(b.content, null);
+          assert.deepEqual(b.embeds, []);
+        } else if (b.flags & IS_COMPONENTS_V2) {
+          assert.ok(!Object.hasOwn(b, 'content'));
+          assert.ok(!Object.hasOwn(b, 'embeds'));
+        }
         server.calls.push({ method: 'PATCH', path: p, body: structuredClone(b) });
         Object.assign(messages.get(messageId), structuredClone(b));
         return structuredClone(messages.get(messageId));
@@ -115,16 +132,42 @@ function harness(t, extra = {}) {
     },
   };
   const stateFile = path.join(dir, 'tickets.json');
-  const make = () =>
-    createTicketEngine({
+  let bootstrap = Promise.resolve();
+  const make = () => {
+    const engine = createTicketEngine({
       api,
       responseAPI,
       config: config(extra),
       stateFile,
       onStatus: (event) => logs.push(event),
+      now: () => clock,
     });
+    return {
+      ...engine,
+      rawHandle: engine.handle,
+      async handle(i) {
+        if (i?.type !== 5 || i.data?.custom_id !== 'cortex:ticket:submit') return engine.handle(i);
+        let work;
+        const setup = bootstrap.then(async () => {
+          const flow = await beginFlow(
+            engine,
+            i.member.user.id,
+            i.channel_id,
+            i.intakeLanguage ?? extra.language ?? 'ar',
+            i.member,
+          );
+          if (!flow.modal) return;
+          i.data.custom_id = flow.modal.custom_id;
+          work = engine.handle(i);
+        });
+        bootstrap = setup.catch(() => {});
+        await setup;
+        return work;
+      },
+    };
+  };
   let next = 123400000000000000n;
-  function interaction(action = 'submit', userId = MEMBER, channelId = PANEL) {
+  function interaction(action = 'submit', userId = MEMBER, channelId = PANEL, language) {
     const type = action === 'submit' ? 5 : action.includes(':') ? 3 : 2;
     return {
       id: String(next++),
@@ -133,6 +176,7 @@ function harness(t, extra = {}) {
       channel_id: channelId,
       token: 'test-interaction-secret',
       type,
+      ...(language ? { intakeLanguage: language } : {}),
       member: {
         user: { id: userId },
         roles: [...server.state.members.find((m) => m.id === userId).roles],
@@ -146,6 +190,8 @@ function harness(t, extra = {}) {
                   type: 18,
                   component: { type: 4, custom_id: 'subject', value: 'Help @everyone' },
                 },
+                { type: 18, component: { type: 3, custom_id: 'gender', values: ['male'] } },
+                { type: 18, component: { type: 4, custom_id: 'age', value: '24' } },
                 {
                   type: 18,
                   component: {
@@ -162,6 +208,25 @@ function harness(t, extra = {}) {
     };
   }
   const read = () => JSON.parse(fs.readFileSync(stateFile, 'utf8'));
+  const acknowledgement = (i) =>
+    responses.findLast((r) => r.method === 'POST' && r.p.includes(`/interactions/${i.id}/`));
+  async function beginFlow(engine, userId = MEMBER, channelId = PANEL, language = 'ar', member) {
+    const raw = engine.rawHandle ?? engine.handle;
+    const open = interaction('ticket', userId, channelId);
+    if (member) open.member = structuredClone(member);
+    await raw(open);
+    const offered = acknowledgement(open)?.b;
+    const choice = offered?.data?.components?.[0]?.components?.find((b) =>
+      b.custom_id.startsWith(`cortex:ticket:language:${language}:`),
+    );
+    if (!choice) return { open, response: offered };
+    const select = interaction('button:language', userId, channelId);
+    if (member) select.member = structuredClone(member);
+    select.data.custom_id = choice.custom_id;
+    await raw(select);
+    const result = acknowledgement(select)?.b;
+    return { open, select, response: result, modal: result?.type === 9 ? result.data : undefined };
+  }
   const created = () => server.calls.filter((c) => c.path === `/guilds/${ID}/channels`);
   return {
     dir,
@@ -178,6 +243,11 @@ function harness(t, extra = {}) {
     interaction,
     read,
     created,
+    beginFlow,
+    acknowledgement,
+    advance: (ms) => {
+      clock += ms;
+    },
   };
 }
 
@@ -245,15 +315,25 @@ test('registration upserts only ticket commands and Gateway interaction delivery
   }
 });
 
-test('slash command and public button open the form without creating channels', async (t) => {
+test('slash command and public button offer a language before opening the complete form', async (t) => {
   const h = harness(t),
     engine = h.make();
   await engine.handle(h.interaction('ticket'));
   await engine.handle(h.interaction('button:open'));
   assert.equal(h.server.calls.length, 0);
   assert.equal(h.responses.length, 2);
-  assert.ok(h.responses.every((r) => r.b.type === 9));
-  assert.equal(h.responses[0].b.data.components[1].component.max_length, 1500);
+  assert.ok(h.responses.every((r) => r.b.type === 4 && r.b.data.flags === 64));
+  assert.deepEqual(
+    h.responses[0].b.data.components[0].components.map((b) => b.label),
+    ['العربية', 'English'],
+  );
+  const flow = await h.beginFlow(engine);
+  assert.equal(flow.modal.components.length, 4);
+  assert.deepEqual(
+    flow.modal.components.map((c) => c.component.custom_id),
+    ['gender', 'age', 'subject', 'description'],
+  );
+  assert.equal(flow.modal.components[3].component.max_length, 1500);
 });
 
 test('submitted ticket creates explicit private overwrites and pings only configured staff and requester', async (t) => {
@@ -263,8 +343,7 @@ test('submitted ticket creates explicit private overwrites and pings only config
   await engine.handle(i);
   const channel = h.created()[0].body;
   assert.equal(h.trace[0][0], 'ack');
-  assert.equal(h.responses[0].b.type, 5);
-  assert.equal(h.responses[0].b.data.flags, 64);
+  assert.equal(h.responses.find((r) => r.b.type === 5).b.data.flags, 64);
   assert.equal(channel.parent_id, CATEGORY);
   assert.equal(channel.topic, `cortex-ticket:${i.id}:${MEMBER}`);
   assert.deepEqual(
@@ -293,6 +372,173 @@ test('requester restrictions are checked again against current membership on sub
   assert.equal(h.responses.at(-1).b.type, 4);
 });
 
+test('requests, copied panel buttons and panel publication are restricted to the exact configured channel', async (t) => {
+  const h = harness(t),
+    engine = h.make(),
+    other = '999999999999999993';
+  h.server.state.channels.push({
+    id: other,
+    type: 0,
+    parent_id: CATEGORY,
+    name: 'another-room',
+    permission_overwrites: [],
+  });
+  for (const action of ['ticket', 'button:open', 'ticket-panel']) {
+    const request = h.interaction(action, STAFF, other);
+    await engine.rawHandle(request);
+    const response = h.acknowledgement(request).b;
+    assert.equal(response.type, 4);
+    assert.equal(response.data.flags, 64);
+    assert.ok(response.data.content.includes(`<#${PANEL}>`));
+    assert.ok(!response.data.components?.length);
+  }
+  assert.equal(h.server.calls.length, 0);
+  assert.ok(!h.trace.some(([method]) => method === 'get'));
+});
+
+test('language and form steps cannot be borrowed, relocated, forged or submitted without a valid flow', async (t) => {
+  const h = harness(t),
+    engine = h.make();
+  const flow = await h.beginFlow(engine);
+  for (const scenario of ['user', 'channel', 'language', 'nonce', 'legacy']) {
+    const request = h.interaction(
+      'submit',
+      scenario === 'user' ? STAFF : MEMBER,
+      scenario === 'channel' ? '999999999999999993' : PANEL,
+    );
+    request.data.custom_id = scenario === 'legacy' ? 'cortex:ticket:submit' : flow.modal.custom_id;
+    if (scenario === 'language')
+      request.data.custom_id = request.data.custom_id.replace(':ar:', ':en:');
+    if (scenario === 'nonce') request.data.custom_id = 'cortex:ticket:submit:ar:' + '0'.repeat(24);
+    await engine.rawHandle(request);
+    assert.equal(h.acknowledgement(request).b.type, 4);
+  }
+  assert.equal(h.created().length, 0);
+  const valid = h.interaction();
+  valid.data.custom_id = flow.modal.custom_id;
+  await engine.rawHandle(valid);
+  assert.equal(h.created().length, 1);
+  const duplicate = h.interaction();
+  duplicate.data.custom_id = flow.modal.custom_id;
+  await engine.rawHandle(duplicate);
+  assert.equal(h.acknowledgement(duplicate).b.type, 4);
+  assert.equal(h.created().length, 1);
+});
+
+test('selected language, gender and normalized age persist through staff actions and restart', async (t) => {
+  const h = harness(t),
+    engine = h.make();
+  const flow = await h.beginFlow(engine, MEMBER, PANEL, 'en');
+  assert.equal(flow.modal.title, 'New support request');
+  assert.equal(flow.modal.components[0].component.options[1].label, 'Female');
+  const submit = h.interaction();
+  submit.data.custom_id = flow.modal.custom_id;
+  submit.data.components.find((row) => row.component.custom_id === 'gender').component.values = [
+    'female',
+  ];
+  submit.data.components.find((row) => row.component.custom_id === 'age').component.value = '٢٤';
+  await engine.rawHandle(submit);
+  const ticket = h.read().tickets[submit.id];
+  assert.equal(ticket.language, 'en');
+  assert.equal(ticket.age, 24);
+  assert.equal(ticket.gender, 'female');
+  assert.equal(h.created()[0].body.parent_id, CATEGORY);
+  assert.match(h.responses.at(-1).b.content, /Your ticket was opened/);
+  const card = () => h.messages.get(ticket.messageId);
+  assert.match(cardText(card(), 2), /^# 🎫 Support request/);
+  assert.match(cardText(card(), 10), /Female/);
+  assert.match(cardText(card(), 10), /24 years/);
+  const restarted = h.make();
+  await restarted.handle(h.interaction('ticket-claim', STAFF, ticket.channelId));
+  assert.match(h.responses.at(-1).b.content, /Ticket claimed by/);
+  await restarted.handle(h.interaction('button:confirm-close', STAFF, ticket.channelId));
+  assert.equal(cardContainer(card()).accent_color, TICKET_COLORS.resolved);
+  assert.match(cardText(card(), 10), /Female/);
+  assert.match(cardText(card(), 10), /24 years/);
+});
+
+test('invalid required profile fields and duplicate form fields never create a ticket', async (t) => {
+  const h = harness(t),
+    engine = h.make();
+  for (const [field, value] of [
+    ['age', ''],
+    ['age', 'abc'],
+    ['age', '0'],
+    ['age', '121'],
+    ['age', '2.5'],
+    ['gender', []],
+    ['gender', ['other']],
+    ['gender', ['male', 'female']],
+    ['duplicate', null],
+  ]) {
+    const flow = await h.beginFlow(engine);
+    const submit = h.interaction();
+    submit.data.custom_id = flow.modal.custom_id;
+    if (field === 'duplicate')
+      submit.data.components[3] = structuredClone(submit.data.components[0]);
+    else {
+      const input = submit.data.components.find(
+        (row) => row.component.custom_id === field,
+      ).component;
+      if (field === 'age') input.value = value;
+      else input.values = value;
+    }
+    await engine.rawHandle(submit);
+    assert.equal(h.created().length, 0, field + ':' + JSON.stringify(value));
+  }
+  assert.equal(Object.keys(h.read().tickets).length, 0);
+  const flow = await h.beginFlow(engine);
+  const valid = h.interaction();
+  valid.data.custom_id = flow.modal.custom_id;
+  valid.data.components.find((row) => row.component.custom_id === 'age').component.value = '۱۷';
+  await engine.rawHandle(valid);
+  assert.equal(h.read().tickets[valid.id].age, 17);
+});
+
+test('expired forms and forms from a previous runtime are rejected until language is chosen again', async (t) => {
+  const h = harness(t),
+    engine = h.make();
+  const flow = await h.beginFlow(engine);
+  h.advance(10 * 60 * 1000);
+  const expired = h.interaction();
+  expired.data.custom_id = flow.modal.custom_id;
+  await engine.rawHandle(expired);
+  assert.equal(h.acknowledgement(expired).b.type, 4);
+  assert.equal(h.created().length, 0);
+  const active = await h.beginFlow(engine);
+  const stale = h.interaction();
+  stale.data.custom_id = active.modal.custom_id;
+  await h.make().rawHandle(stale);
+  assert.equal(h.acknowledgement(stale).b.type, 4);
+  assert.equal(h.created().length, 0);
+});
+
+test('staff actions on moved tickets are blocked and anomalous creation responses never receive support messages', async (t) => {
+  const h = harness(t),
+    engine = h.make(),
+    submit = h.interaction();
+  await engine.handle(submit);
+  const ticket = h.read().tickets[submit.id];
+  h.server.state.channels.find((channel) => channel.id === ticket.channelId).parent_id =
+    '999999999999999994';
+  const writes = h.server.calls.length;
+  for (const action of ['ticket-claim', 'ticket-resolve', 'button:confirm-close'])
+    await engine.handle(h.interaction(action, STAFF, ticket.channelId));
+  assert.equal(h.server.calls.length, writes);
+  assert.equal(h.read().tickets[submit.id].claimedBy, null);
+  const bad = harness(t),
+    post = bad.api.post;
+  bad.api.post = async (route, body) => {
+    const result = await post(route, body);
+    return route === `/guilds/${ID}/channels`
+      ? { ...result, parent_id: '999999999999999994' }
+      : result;
+  };
+  await bad.make().handle(bad.interaction());
+  assert.equal(bad.messages.size, 0);
+  assert.equal(Object.values(bad.read().tickets)[0].status, 'unknown');
+});
+
 test('one status card changes red to yellow to green, preserves the issue and records handler and resolver', async (t) => {
   const h = harness(t),
     engine = h.make();
@@ -302,40 +548,40 @@ test('one status card changes red to yellow to green, preserves the issue and re
   let ticket = h.read().tickets[submitted.id];
   const messageId = ticket.messageId;
   const card = () => h.messages.get(messageId);
-  assert.equal(card().embeds[0].color, TICKET_COLORS.waiting);
-  assert.match(card().embeds[0].fields[0].value, /🔴/);
-  assert.match(card().embeds[0].fields[2].value, /لم يستلمها/);
-  assert.equal(card().embeds[0].title, 'Help @everyone');
-  const originalDescription = card().embeds[0].description;
+  assert.equal(cardContainer(card()).accent_color, TICKET_COLORS.waiting);
+  assert.match(cardText(card(), 8), /^## 🔴/);
+  assert.match(cardText(card(), 8), /لم يستلمها/);
+  assert.equal(ticketCardIssue(card()).title, 'Help @everyone');
+  const originalDescription = ticketCardIssue(card()).description;
   await Promise.all([
     engine.handle(h.interaction('ticket-claim', STAFF, ticket.channelId)),
     engine.handle(h.interaction('ticket-claim', OWNER, ticket.channelId)),
   ]);
   ticket = h.read().tickets[submitted.id];
   assert.equal(ticket.claimedBy, STAFF);
-  assert.equal(card().embeds[0].color, TICKET_COLORS.claimed);
+  assert.equal(cardContainer(card()).accent_color, TICKET_COLORS.claimed);
   assert.equal(ticket.claimedName, 'أحمد الدعم');
-  assert.equal(card().embeds[0].fields[2].value, `<@${STAFF}>`);
-  assert.ok(card().embeds[0].fields.every((f) => f.inline === false));
-  assert.equal(card().content, '');
-  assert.ok(card().embeds[0].fields[2].value.includes(`<@${STAFF}>`));
-  assert.equal(card().embeds[0].description, originalDescription);
-  assert.equal(card().components[0].components[0].disabled, true);
+  assert.ok(cardText(card(), 8).includes(`<@${STAFF}>`));
+  assert.equal(card().flags & IS_COMPONENTS_V2, IS_COMPONENTS_V2);
+  assert.ok(!Object.hasOwn(card(), 'content'));
+  assert.match(cardText(card(), 5), /^## /);
+  assert.equal(ticketCardIssue(card()).description, originalDescription);
+  assert.equal(cardButtons(card())[0].disabled, true);
   const restarted = h.make();
   await restarted.handle(h.interaction('ticket-resolve', OWNER, ticket.channelId));
-  assert.equal(card().embeds[0].color, TICKET_COLORS.claimed);
+  assert.equal(cardContainer(card()).accent_color, TICKET_COLORS.claimed);
   await restarted.handle(h.interaction('button:confirm-close', MEMBER, ticket.channelId));
-  assert.equal(card().embeds[0].color, TICKET_COLORS.claimed);
+  assert.equal(cardContainer(card()).accent_color, TICKET_COLORS.claimed);
   await restarted.handle(h.interaction('button:confirm-close', OWNER, ticket.channelId));
   ticket = h.read().tickets[submitted.id];
   assert.equal(ticket.messageId, messageId);
   assert.equal(ticket.resolvedBy, OWNER);
   assert.equal(ticket.claimedBy, STAFF);
-  assert.equal(card().embeds[0].color, TICKET_COLORS.resolved);
-  assert.match(card().embeds[0].fields[0].value, /🟢/);
-  assert.ok(card().embeds[0].fields[3].value.includes(`<@${OWNER}>`));
-  assert.equal(card().embeds[0].description, originalDescription);
-  assert.ok(card().components[0].components.every((b) => b.disabled));
+  assert.equal(cardContainer(card()).accent_color, TICKET_COLORS.resolved);
+  assert.match(cardText(card(), 8), /^## 🟢/);
+  assert.ok(cardText(card(), 8).includes(`<@${OWNER}>`));
+  assert.equal(ticketCardIssue(card()).description, originalDescription);
+  assert.ok(cardButtons(card()).every((b) => b.disabled));
   assert.deepEqual(card().allowed_mentions, { parse: [] });
   assert.equal(h.messages.size, 1);
 });
@@ -348,17 +594,15 @@ test('the same handler and resolver is shown once, with a single completed statu
   const ticket = h.read().tickets[submitted.id];
   await engine.handle(h.interaction('ticket-claim', STAFF, ticket.channelId));
   await engine.handle(h.interaction('button:confirm-close', STAFF, ticket.channelId));
-  const card = h.messages.get(ticket.messageId),
-    embed = card.embeds[0];
-  const staffFields = embed.fields.filter((f) => f.value.includes(`<@${STAFF}>`));
-  assert.equal(staffFields.length, 1);
-  assert.match(staffFields[0].name, /المتابعة والحل/);
-  assert.equal(embed.author.name, 'CORTEX • مركز الدعم');
-  assert.equal(embed.title, 'Help @everyone');
-  assert.equal(embed.description, 'Details <@&999999999999999992>');
-  assert.equal(card.components[0].components.length, 1);
-  assert.equal(card.components[0].components[0].label, 'تم حل المشكلة');
-  assert.equal(card.components[0].components[0].disabled, true);
+  const card = h.messages.get(ticket.messageId);
+  assert.equal(cardText(card, 8).split(`<@${STAFF}>`).length - 1, 1);
+  assert.match(cardText(card, 8), /المتابعة والحل/);
+  assert.match(cardText(card, 2), /CORTEX • مركز الدعم/);
+  assert.equal(ticketCardIssue(card).title, 'Help @everyone');
+  assert.equal(ticketCardIssue(card).description, 'Details <@&999999999999999992>');
+  assert.equal(cardButtons(card).length, 1);
+  assert.equal(cardButtons(card)[0].label, 'تم حل المشكلة');
+  assert.equal(cardButtons(card)[0].disabled, true);
   assert.deepEqual(card.allowed_mentions, { parse: [] });
 });
 
@@ -369,13 +613,33 @@ test('legacy open tickets upgrade their original message on the next staff actio
   const state = h.read(),
     ticket = state.tickets[submitted.id];
   const oldMessageId = ticket.messageId;
-  delete h.messages.get(oldMessageId).embeds[0].footer;
+  const legacy = h.messages.get(oldMessageId);
+  delete legacy.flags;
+  legacy.content = 'Old notification';
+  legacy.embeds = [{ title: 'Help @everyone', description: 'Details <@&999999999999999992>' }];
+  legacy.components = [
+    {
+      type: 1,
+      components: [
+        { type: 2, custom_id: 'cortex:ticket:claim' },
+        { type: 2, custom_id: 'cortex:ticket:close' },
+      ],
+    },
+  ];
   delete ticket.messageId;
   delete ticket.messageAttempt;
+  delete ticket.language;
+  delete ticket.gender;
+  delete ticket.age;
   fs.writeFileSync(h.stateFile, JSON.stringify(state));
   await h.make().handle(h.interaction('ticket-claim', STAFF, ticket.channelId));
   assert.equal(h.read().tickets[submitted.id].messageId, oldMessageId);
-  assert.equal(h.messages.get(oldMessageId).embeds[0].color, TICKET_COLORS.claimed);
+  assert.equal(cardContainer(h.messages.get(oldMessageId)).accent_color, TICKET_COLORS.claimed);
+  assert.equal(h.messages.get(oldMessageId).flags & IS_COMPONENTS_V2, IS_COMPONENTS_V2);
+  assert.equal(
+    ticketCardIssue(h.messages.get(oldMessageId)).description,
+    'Details <@&999999999999999992>',
+  );
   assert.equal(h.messages.size, 1);
 });
 
@@ -391,13 +655,13 @@ test('a failed card edit preserves the claim and can be repaired after restart w
   };
   await h.make().handle(h.interaction('ticket-claim', STAFF, ticket.channelId));
   assert.equal(h.read().tickets[submitted.id].claimedBy, STAFF);
-  assert.equal(h.messages.get(ticket.messageId).embeds[0].color, TICKET_COLORS.waiting);
+  assert.equal(cardContainer(h.messages.get(ticket.messageId)).accent_color, TICKET_COLORS.waiting);
   assert.ok(h.logs.some((event) => event.code === 'TICKET_STATUS_UPDATE_FAILED'));
   assert.match(h.responses.at(-1).b.content, /تعذّر تحديث بطاقة/);
   h.api.patch = patch;
   await h.make().handle(h.interaction('ticket-claim', OWNER, ticket.channelId));
   assert.equal(h.read().tickets[submitted.id].claimedBy, STAFF);
-  assert.equal(h.messages.get(ticket.messageId).embeds[0].color, TICKET_COLORS.claimed);
+  assert.equal(cardContainer(h.messages.get(ticket.messageId)).accent_color, TICKET_COLORS.claimed);
 });
 
 test('resolved card retries preserve the original solver and never repeat channel closure', async (t) => {
@@ -421,7 +685,10 @@ test('resolved card retries preserve the original solver and never repeat channe
   await h.make().handle(h.interaction('ticket-resolve', OWNER, ticket.channelId));
   assert.equal(channelEdits(), 1);
   assert.equal(h.read().tickets[submitted.id].resolvedBy, STAFF);
-  assert.equal(h.messages.get(ticket.messageId).embeds[0].color, TICKET_COLORS.resolved);
+  assert.equal(
+    cardContainer(h.messages.get(ticket.messageId)).accent_color,
+    TICKET_COLORS.resolved,
+  );
 });
 
 test('lost message responses are recovered without posting a second status card', async (t) => {
@@ -442,7 +709,10 @@ test('lost message responses are recovered without posting a second status card'
   const updated = h.read().tickets[submitted.id];
   assert.equal(updated.messageAttempt, 'sent');
   assert.equal(h.messages.size, 1);
-  assert.equal(h.messages.get(updated.messageId).embeds[0].color, TICKET_COLORS.claimed);
+  assert.equal(
+    cardContainer(h.messages.get(updated.messageId)).accent_color,
+    TICKET_COLORS.claimed,
+  );
 });
 
 test('legacy closed tickets are not retroactively labelled resolved and foreign messages are never edited', async (t) => {
@@ -455,7 +725,7 @@ test('legacy closed tickets are not retroactively labelled resolved and foreign 
   fs.writeFileSync(h.stateFile, JSON.stringify(state));
   await h.make().handle(h.interaction('ticket-resolve', STAFF, ticket.channelId));
   assert.equal(h.read().tickets[submitted.id].resolvedBy, undefined);
-  assert.equal(h.messages.get(ticket.messageId).embeds[0].color, TICKET_COLORS.closed);
+  assert.equal(cardContainer(h.messages.get(ticket.messageId)).accent_color, TICKET_COLORS.closed);
   const message = h.messages.get(ticket.messageId);
   message.author.id = MEMBER;
   const edits = h.server.calls.length;
@@ -475,10 +745,10 @@ test('support commands deny ordinary members and unselected administrator roles;
   assert.equal(h.server.calls.length, 1);
   assert.equal(h.server.calls[0].path, `/channels/${PANEL}/messages`);
   const panel = h.server.calls[0].body;
-  assert.match(panel.embeds[0].title, /كيف نقدر نساعدك/);
-  assert.equal(panel.embeds[0].fields.length, 2);
-  assert.ok(panel.embeds[0].fields.every((field) => field.inline === false));
-  assert.equal(panel.components[0].components[0].label, 'فتح تذكرة دعم');
+  assert.match(cardText(panel, 2), /^# 🎫 كيف نقدر نساعدك/);
+  assert.match(cardText(panel, 5), /^## /);
+  assert.match(cardText(panel, 7), /^## /);
+  assert.equal(cardButtons(panel)[0].label, 'فتح تذكرة دعم');
   assert.deepEqual(panel.allowed_mentions, { parse: [] });
 });
 
@@ -577,13 +847,13 @@ test('interaction acknowledgements do not wait behind slow work; failed acknowle
   const engine = h.make(),
     first = engine.handle(h.interaction());
   await setImmediate();
-  const second = engine.handle(h.interaction());
+  const second = engine.handle(h.interaction('submit', STAFF));
   await setImmediate();
-  assert.equal(h.responses.filter((r) => r.method === 'POST').length, 2);
+  assert.equal(h.responses.filter((r) => r.method === 'POST' && r.b.type === 5).length, 2);
   assert.equal(h.created().length, 0);
   release();
   await Promise.all([first, second]);
-  assert.equal(h.created().length, 1);
+  assert.equal(h.created().length, 2);
   const denied = harness(t);
   denied.responseAPI.post = async () => {
     throw new Error('secret-token must not be logged');
@@ -596,7 +866,7 @@ test('interaction acknowledgements do not wait behind slow work; failed acknowle
 test('corrupt state is retained and fails closed; unrelated and foreign interactions are ignored', async (t) => {
   const h = harness(t),
     engine = h.make();
-  await engine.handle({ ...h.interaction(), guild_id: undefined });
+  await engine.rawHandle({ ...h.interaction(), guild_id: undefined });
   await engine.handle(h.interaction('unrelated'));
   assert.equal(h.responses.length, 0);
   fs.writeFileSync(h.stateFile, '{broken');
@@ -672,7 +942,17 @@ test('hosted runtime registers and receives tickets with mocked APIs and drains 
     fetchItems: async () => [],
     log() {},
   });
-  gateway.emit('interaction', h.interaction());
+  const open = h.interaction('ticket');
+  gateway.emit('interaction', open);
+  await setImmediate();
+  const choice = h.acknowledgement(open).b.data.components[0].components[0];
+  const language = h.interaction('button:language');
+  language.data.custom_id = choice.custom_id;
+  gateway.emit('interaction', language);
+  await setImmediate();
+  const submit = h.interaction();
+  submit.data.custom_id = h.acknowledgement(language).b.data.custom_id;
+  gateway.emit('interaction', submit);
   for (let attempts = 0; attempts < 30 && h.created().length === 0; attempts++)
     await setImmediate();
   await bot.stop();

@@ -4,7 +4,7 @@ window.CortexLocales.en = Object.freeze({
   'tickets.status_title': 'Ticket status and assigned staff',
   'tickets.status_preview': 'Discord card appearance guide',
   'tickets.status_help':
-    'The request card in the ticket channel updates when claimed and when resolution is confirmed, preserving the subject and description.',
+    'Requests use a wide card with large headings and clear separators. The same card updates when claimed and resolved, preserving the subject and description.',
   'tickets.status_waiting': '🔴 Waiting for staff',
   'tickets.status_waiting_help': 'A new request that no staff member has claimed yet.',
   'tickets.status_claimed': '🟡 Claimed — in progress',
@@ -77,7 +77,9 @@ window.CortexLocales.en = Object.freeze({
   'tickets.settings': 'Ticket settings and permissions',
   'tickets.panel_channel': 'Help request panel channel',
   'tickets.category': 'Category for new tickets',
-  'tickets.language': 'Bot message language',
+  'tickets.language': 'Support panel and command description language',
+  'tickets.intake_help':
+    'Opening requests and publishing the support panel are only allowed in the selected help request channel. Members choose Arabic or English first, then complete gender, age, subject and issue details. Ticket channels are created inside the selected category, and their messages keep the member’s chosen language.',
   'tickets.staff_roles': 'Support staff roles',
   'tickets.staff_help':
     'Choose one or more roles. These roles can view tickets, publish the panel, claim tickets and close them.',
@@ -92,7 +94,7 @@ window.CortexLocales.en = Object.freeze({
     'After saving, stop and restart the local bot connection to register commands and apply settings, or export and update the hosted package. Run only one instance. A support role can publish the request panel with /ticket-panel.',
   'tickets.commands': 'Bot commands',
   'tickets.command_open':
-    'Opens a subject and description form, then creates a private channel and alerts the support team.',
+    'Only in the configured help request channel: choose a language and complete gender, age, subject and issue details to open a private ticket.',
   'tickets.command_panel':
     'Publishes the ticket button in the selected channel. Support roles and the server owner only.',
   'tickets.command_claim':
