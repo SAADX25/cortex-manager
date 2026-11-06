@@ -12,6 +12,7 @@ export const ticketCopy = {
     ageLabel: 'العمر بالسنوات',
     agePlaceholder: 'مثال: 24',
     ageYears: '{age} سنة',
+    openedLabel: 'فُتح',
     profileHelp: 'تُرفق هذه البيانات داخل التذكرة لفريق الدعم.',
     wrongChannel: 'فتح الطلبات ونشر لوحة الدعم مسموح فقط في قناة طلب المساعدة المحددة. انتقل إلى:',
     formExpired:
@@ -51,6 +52,8 @@ export const ticketCopy = {
     failed: 'تعذّر تنفيذ الطلب. راجع صلاحيات البوت وسجل تشغيله مع الإدارة.',
     exists: 'لديك تذكرة مفتوحة:',
     created: 'تم فتح تذكرتك وإبلاغ فريق الدعم:',
+    deletedRecovered:
+      'غرفة طلبك السابق حُذفت. تم إلغاء حجزها وفتح طلب جديد؛ لم تُسجَّل المشكلة كمحلولة.',
     uncertain: 'يوجد طلب سابق قيد المراجعة. تواصل مع الإدارة لتفادي إنشاء تذكرة مكررة.',
     notified: 'طلب دعم جديد',
     panelSent: 'تم إرسال لوحة فتح التذاكر في',
@@ -64,14 +67,14 @@ export const ticketCopy = {
     confirmText:
       'هل تؤكد أن المشكلة تم حلها؟ ستصبح الحالة خضراء ويُسجَّل اسمك، ثم يصبح صاحب التذكرة للقراءة فقط مع حفظ المحادثة.',
     statusLabel: '📌 حالة الطلب',
-    requesterLabel: '👤 صاحب الطلب',
-    handlerLabel: '🛠️ المسؤول عن المتابعة',
-    resolvedByLabel: '✅ تم الحل بواسطة',
+    requesterLabel: 'صاحب الطلب',
+    handlerLabel: 'مسؤول الدعم',
+    resolvedByLabel: 'أكد الحل',
     unassigned: 'لم يستلمها أحد بعد',
-    status_waiting: '🔴 بانتظار استلام أحد الإداريين',
-    status_claimed: '🟡 تم الاستلام — قيد المعالجة',
+    status_waiting: '🔴 بانتظار الاستلام',
+    status_claimed: '🟡 قيد المعالجة',
     status_resolved: '🟢 تم حل المشكلة',
-    status_closed: 'مغلقة — لم يُسجَّل تأكيد الحل في النسخة القديمة',
+    status_closed: '⚪ مغلقة — لم يُسجَّل تأكيد الحل في النسخة القديمة',
     closedLegacy: 'هذه التذكرة مغلقة من نسخة سابقة؛ لا يوجد سجل يؤكد حل المشكلة.',
     cardUpdateFailed:
       'تم حفظ الإجراء، لكن تعذّر تحديث بطاقة الحالة. أعد تنفيذ الأمر لتحديثها واطلب من الإدارة مراجعة صلاحيات البوت إذا استمر الخطأ.',
@@ -89,6 +92,7 @@ export const ticketCopy = {
     ageLabel: 'Age in years',
     agePlaceholder: 'For example: 24',
     ageYears: '{age} years',
+    openedLabel: 'Opened',
     profileHelp: 'These details accompany your ticket for the support team.',
     wrongChannel:
       'Requests and support panels are only allowed in the configured help request channel. Go to:',
@@ -134,6 +138,8 @@ export const ticketCopy = {
     failed: 'The request failed. Ask staff to check bot permissions and runtime logs.',
     exists: 'You already have an open ticket:',
     created: 'Your ticket was opened and the support team notified:',
+    deletedRecovered:
+      'Your previous ticket channel was deleted. Its reservation was released and a new request opened; the old issue was not marked resolved.',
     uncertain:
       'An earlier request needs staff review. Contact staff to avoid creating a duplicate ticket.',
     notified: 'New support request',
@@ -148,14 +154,14 @@ export const ticketCopy = {
     confirmText:
       'Confirm that the issue is resolved? The card will turn green and record your name. The owner becomes read-only and the conversation is preserved.',
     statusLabel: '📌 Request status',
-    requesterLabel: '👤 Requested by',
-    handlerLabel: '🛠️ Assigned staff member',
-    resolvedByLabel: '✅ Resolved by',
+    requesterLabel: 'Requested by',
+    handlerLabel: 'Support staff',
+    resolvedByLabel: 'Resolution confirmed by',
     unassigned: 'Not assigned yet',
     status_waiting: '🔴 Waiting for a staff member',
-    status_claimed: '🟡 Claimed — in progress',
+    status_claimed: '🟡 In progress',
     status_resolved: '🟢 Issue resolved',
-    status_closed: 'Closed — the earlier version did not record a resolution',
+    status_closed: '⚪ Closed — the earlier version did not record a resolution',
     closedLegacy:
       'This ticket was closed by an earlier version; no resolution confirmation was recorded.',
     cardUpdateFailed:

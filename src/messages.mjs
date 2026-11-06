@@ -5,6 +5,8 @@ import { snapshot } from './api.mjs';
 import { digest } from './safety.mjs';
 import { P, has, effectiveChannelPermissions } from './permissions.mjs';
 import { validateMessageImage } from './message-image.mjs';
+import { validateTickets } from './ticket-config.mjs';
+import { ticketPanelCard, ticketPanelText } from './ticket-status.mjs';
 
 export function messageProtection(s, c) {
   if (![0, 2, 5].includes(c.type))
@@ -66,7 +68,45 @@ function validateEmbeds(embeds) {
   }
   if (total > 6000) throw new Error('مجموع نصوص البطاقات يتجاوز 6000 حرف.');
 }
-export function prepareMessage(s, request, nonce) {
+function prepareTicketPanelMessage(s, request, nonce, settings) {
+  if (
+    Object.keys(request).some((k) => !['kind', 'settingsRevision'].includes(k)) ||
+    !/^[a-f0-9]{64}$/.test(request.settingsRevision ?? '') ||
+    request.settingsRevision !== settings?.revision
+  )
+    throw new Error('تغيّرت إعدادات الدعم؛ احفظها وحدّث معاينة الرسالة أولًا.');
+  const config = validateTickets(settings.config);
+  const g = config.guilds.find((g) => g.guildId === s.guild.id);
+  if (!g?.enabled) throw new Error('فعّل تذاكر الدعم واحفظ إعدادات هذا السيرفر أولًا.');
+  const channel = s.channels.find((c) => c.id === g.panelChannelId && c.type === 0);
+  if (
+    !channel ||
+    !s.channels.some((c) => c.id === g.categoryId && c.type === 4) ||
+    [...g.staffRoleIds, ...g.requesterRoleIds].some((id) => !s.roles.some((r) => r.id === id))
+  )
+    throw new Error('قناة المساعدة أو قسم التذاكر أو إحدى الرتب غير موجودة؛ حدّث الإعدادات.');
+  const protection = messageProtection(s, channel);
+  if (protection) throw new Error(protection);
+  if (!/^[a-f0-9]{24}$/.test(nonce ?? '')) throw new Error('معرّف مراجعة الرسالة غير صالح.');
+  const plan = {
+    kind: 'ticket-panel',
+    settingsRevision: settings.revision,
+    guildId: s.guild.id,
+    guildName: s.guild.name,
+    botId: s.bot.id,
+    channelId: channel.id,
+    channelName: channel.name,
+    channelType: channel.type,
+    sourceHash: sourceHash(),
+    request,
+    panel: { ...ticketPanelText },
+    body: { ...ticketPanelCard(), nonce, enforce_nonce: true },
+  };
+  return { ...plan, approvalHash: digest(plan) };
+}
+export function prepareMessage(s, request, nonce, { ticketSettings } = {}) {
+  if (request?.kind === 'ticket-panel')
+    return prepareTicketPanelMessage(s, request, nonce, ticketSettings);
   if (
     !request ||
     typeof request !== 'object' ||
@@ -115,9 +155,14 @@ export function prepareMessage(s, request, nonce) {
   return { ...plan, approvalHash: digest(plan) };
 }
 export const messageSummary = (p) =>
-  `السيرفر: ${p.guildName}\nالغرفة: ${p.channelName}\n\n${p.body.content}${p.request.image ? '\n\nالصورة المرفقة: ' + validateMessageImage(p.request.image).info.name + ' · SHA256: ' + p.request.image.sha256 : ''}${(p.body.embeds ?? []).map((e) => `\n\n${e.title ?? ''}\n${e.description ?? ''}\n${(e.fields ?? []).map((f) => `${f.name}\n${f.value}`).join('\n\n')}\n${e.footer?.text ?? ''}`).join('')}\n\nالمرسل: البوت. الإشارات التلقائية للأعضاء والرتب و@everyone معطّلة.`;
+  p.kind === 'ticket-panel'
+    ? `السيرفر: ${p.guildName}\nالغرفة: ${p.channelName}\n\n${p.panel.title}\n[${p.panel.button}]\n\nالمرسل: البوت. لا تُرسل إشارات للأعضاء أو الرتب.`
+    : `السيرفر: ${p.guildName}\nالغرفة: ${p.channelName}\n\n${p.body.content}${p.request.image ? '\n\nالصورة المرفقة: ' + validateMessageImage(p.request.image).info.name + ' · SHA256: ' + p.request.image.sha256 : ''}${(p.body.embeds ?? []).map((e) => `\n\n${e.title ?? ''}\n${e.description ?? ''}\n${(e.fields ?? []).map((f) => `${f.name}\n${f.value}`).join('\n\n')}\n${e.footer?.text ?? ''}`).join('')}\n\nالمرسل: البوت. الإشارات التلقائية للأعضاء والرتب و@everyone معطّلة.`;
 export const messagePreview = (p) => ({
   approvalHash: p.approvalHash,
+  ...(p.kind === 'ticket-panel'
+    ? { kind: p.kind, guildId: p.guildId, settingsRevision: p.settingsRevision, panel: p.panel }
+    : {}),
   channelId: p.channelId,
   channelName: p.channelName,
   content: p.body.content,
@@ -125,16 +170,18 @@ export const messagePreview = (p) => ({
   ...(p.body.embeds ? { embeds: p.body.embeds } : {}),
   summary: messageSummary(p),
 });
-export async function previewMessage(api, guildId, request, directory) {
+export async function previewMessage(api, guildId, request, directory, { ticketStore } = {}) {
   const s = await snapshot(api, guildId, { includeMembers: false }),
-    plan = prepareMessage(s, request, randomBytes(12).toString('hex'));
+    plan = prepareMessage(s, request, randomBytes(12).toString('hex'), {
+      ticketSettings: request?.kind === 'ticket-panel' ? ticketStore?.read() : undefined,
+    });
   fs.mkdirSync(directory, { recursive: true });
   fs.writeFileSync(path.join(directory, 'message-plan.json'), JSON.stringify(plan, null, 2));
   fs.rmSync(path.join(directory, 'message-result.json'), { force: true });
   fs.writeFileSync(path.join(directory, 'message-preview.txt'), messageSummary(plan));
   return plan;
 }
-export async function sendMessage(api, guildId, confirmation, directory) {
+export async function sendMessage(api, guildId, confirmation, directory, { ticketStore } = {}) {
   if (confirmation?.confirmed !== true || confirmation.guildId !== guildId)
     throw new Error('راجع الرسالة وأكّد إرسالها إلى السيرفر المحدد أولًا.');
   const reviewed = JSON.parse(fs.readFileSync(path.join(directory, 'message-plan.json'), 'utf8'));
@@ -145,7 +192,9 @@ export async function sendMessage(api, guildId, confirmation, directory) {
   )
     throw new Error('الغرفة أو الرسالة لا تطابق المعاينة.');
   const current = await snapshot(api, guildId, { includeMembers: false }),
-    fresh = prepareMessage(current, reviewed.request, reviewed.body.nonce);
+    fresh = prepareMessage(current, reviewed.request, reviewed.body.nonce, {
+      ticketSettings: reviewed.request?.kind === 'ticket-panel' ? ticketStore?.read() : undefined,
+    });
   if (fresh.approvalHash !== reviewed.approvalHash)
     throw new Error('تغيّر اسم الغرفة أو البوت أو الكود منذ المعاينة؛ راجع الرسالة مجددًا.');
   const attempt = path.join(directory, 'message-history', fresh.approvalHash);

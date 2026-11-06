@@ -18,6 +18,7 @@ test('global 429 and exhausted route headers delay serialized requests', async (
     new Response('{}'),
   ];
   const api = new DiscordAPI('fake-token', {
+    now: () => 0,
     sleep: async (ms) => sleeps.push(ms),
     fetchImpl: async (url, options) => {
       requests.push([url, options.method]);
@@ -29,7 +30,65 @@ test('global 429 and exhausted route headers delay serialized requests', async (
     requests.map((x) => x[0].split('/').at(-1)),
     ['first', 'first', 'second'],
   );
-  assert.deepEqual(sleeps, [2250, 950, 180]);
+  assert.deepEqual(sleeps, [2250, 950]);
+});
+
+test('successful responses return before cooldown while the next queued request still waits', async () => {
+  let release;
+  const sleeps = [],
+    requests = [];
+  const api = new DiscordAPI('fake-token', {
+    now: () => 0,
+    sleep: (ms) => {
+      sleeps.push(ms);
+      return new Promise((resolve) => (release = resolve));
+    },
+    fetchImpl: async (url) => {
+      requests.push(url);
+      return new Response('{"ok":true}', {
+        headers: { 'x-ratelimit-remaining': '0', 'x-ratelimit-reset-after': '10' },
+      });
+    },
+  });
+  assert.deepEqual(await api.get('/first'), { ok: true });
+  assert.deepEqual(sleeps, []);
+  const next = api.get('/second');
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(sleeps, [10250]);
+  assert.equal(requests.length, 1);
+  release();
+  assert.deepEqual(await next, { ok: true });
+  assert.equal(requests.length, 2);
+});
+
+test('elapsed cooldown does not delay a later request', async () => {
+  let time = 1000;
+  const sleeps = [];
+  const api = new DiscordAPI('fake-token', {
+    now: () => time,
+    sleep: async (ms) => sleeps.push(ms),
+    fetchImpl: async () =>
+      new Response('{}', {
+        headers: { 'x-ratelimit-remaining': '0', 'x-ratelimit-reset-after': '10' },
+      }),
+  });
+  await api.get('/first');
+  time += 11000;
+  await api.get('/second');
+  assert.deepEqual(sleeps, []);
+});
+
+test('direct interaction acknowledgements still bypass the ordinary request cooldown', async () => {
+  const api = new DiscordAPI('fake-token', {
+    now: () => 0,
+    sleep: async () => assert.fail('Interaction acknowledgement must not wait in the queue'),
+    fetchImpl: async () =>
+      new Response('{}', {
+        headers: { 'x-ratelimit-remaining': '0', 'x-ratelimit-reset-after': '10' },
+      }),
+  });
+  await api.request('POST', '/interactions/first/callback', { type: 5 });
+  await api.request('POST', '/interactions/second/callback', { type: 5 });
 });
 test('ambiguous POST failure is not retried to avoid duplicate channels or roles', async () => {
   let requests = 0;

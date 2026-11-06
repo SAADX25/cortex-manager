@@ -4,7 +4,7 @@ window.CortexLocales.en = Object.freeze({
   'tickets.status_title': 'Ticket status and assigned staff',
   'tickets.status_preview': 'Discord card appearance guide',
   'tickets.status_help':
-    'Requests use a wide card with large headings and clear separators. The same card updates when claimed and resolved, preserving the subject and description.',
+    'The card shows the status, issue title and details first, followed by the requester and support staff. Its short reference and original opening time stay fixed through claims and resolution.',
   'tickets.status_waiting': '🔴 Waiting for staff',
   'tickets.status_waiting_help': 'A new request that no staff member has claimed yet.',
   'tickets.status_claimed': '🟡 Claimed — in progress',
@@ -73,11 +73,11 @@ window.CortexLocales.en = Object.freeze({
   'ui.support_tickets': 'Support tickets',
   'tickets.title': 'Support tickets',
   'tickets.intro':
-    'Private requests between members and staff. Choose support roles and channels, then use bot commands or the open-ticket button.',
+    'Private requests between members and staff. Choose support roles and channels, then publish the request button message below so members can use it without commands.',
   'tickets.settings': 'Ticket settings and permissions',
   'tickets.panel_channel': 'Help request panel channel',
   'tickets.category': 'Category for new tickets',
-  'tickets.language': 'Support panel and command description language',
+  'tickets.language': 'Support command description language',
   'tickets.intake_help':
     'Opening requests and publishing the support panel are only allowed in the selected help request channel. Members choose Arabic or English first, then complete gender, age, subject and issue details. Ticket channels are created inside the selected category, and their messages keep the member’s chosen language.',
   'tickets.staff_roles': 'Support staff roles',
@@ -91,7 +91,27 @@ window.CortexLocales.en = Object.freeze({
   'tickets.permissions':
     'The bot needs Manage Channels, Manage Roles, View Channel, Send Messages, Embed Links and Read Message History. To ping a support role, make it mentionable or grant the bot permission to mention roles.',
   'tickets.activation':
-    'After saving, stop and restart the local bot connection to register commands and apply settings, or export and update the hosted package. Run only one instance. A support role can publish the request panel with /ticket-panel.',
+    'After saving, restart the local bot connection or export and update the hosted package. Run only one instance. Publish the request button message from the section below.',
+  'tickets.publish_title': 'Support request message',
+  'tickets.publish_help':
+    'Publish a ready-made message with an open-ticket button in the saved help channel. Members click, choose a language and fill in their request without typing commands.',
+  'tickets.publish_save_first':
+    'Use the save and preview button below to review and save settings before preparing the message.',
+  'tickets.publish_save_preview': 'Save settings and preview message',
+  'tickets.publish_ready':
+    'Preview ready. Select Publish support message to review the destination and confirm sending.',
+  'tickets.publish_enable_preview': 'Enable tickets, save and preview message',
+  'tickets.publish_review_first':
+    'Preview the support message first; publishing becomes available when the preview is ready.',
+  'tickets.publish_preview': 'Preview support message',
+  'tickets.publish_send': 'Publish support message',
+  'tickets.publish_confirm': 'Review the support message before publishing',
+  'tickets.publish_position':
+    'A new message will appear below the current messages in the selected channel. Existing instructions stay intact and no members are pinged.',
+  'tickets.publish_runtime':
+    'Preview sends nothing. Publishing sends directly to Discord. Run either the local or hosted bot with matching settings so it can respond to the button; do not run both.',
+  'tickets.publish_stale':
+    'The server, settings or preview changed. Generate a new preview before publishing.',
   'tickets.commands': 'Bot commands',
   'tickets.command_open':
     'Only in the configured help request channel: choose a language and complete gender, age, subject and issue details to open a private ticket.',

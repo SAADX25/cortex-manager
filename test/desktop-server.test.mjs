@@ -1046,18 +1046,22 @@ test('bot uptime starts on ready, survives reconnect and inventory reads, resets
   assert.equal((await s.state()).presenceStartedAt, null);
 });
 
-test('combined connect loads the server before starting presence and reuses an existing connection', async (t) => {
+test('combined connect starts presence after verified inventory without waiting for statistics and reuses it', async (t) => {
   const s = await setup(t);
   assert.equal((await s.action('connect', credentials)).status, 202);
   assert.equal(s.calls.length, 1);
   assert.equal(s.calls[0].mode, 'inventory');
   s.calls[0].output({ event: 'diagnostics', data: diagnostics(sample()) });
-  s.calls[0].finish();
-  await s.settled();
   assert.equal(s.calls.length, 2);
   assert.equal(s.calls[1].mode, 'online');
+  assert.equal((await s.state()).busy, true);
   assert.equal((await s.state()).presenceActive, true);
   s.calls[1].output({ event: 'presence', status: 'online', message: 'Connected' });
+  s.calls[0].output({ event: 'diagnostics', data: diagnostics(sample()) });
+  assert.equal(s.calls.length, 2);
+  assert.equal((await s.state()).online, true);
+  s.calls[0].finish();
+  await s.settled();
   await s.action('connect', credentials);
   assert.equal(s.calls[2].mode, 'inventory');
   s.calls[2].output({ event: 'diagnostics', data: diagnostics(sample()) });
@@ -1081,6 +1085,25 @@ test('combined connect never starts presence after failed inventory or an explic
   await s.settled();
   assert.equal(s.calls.length, 2);
   assert.equal((await s.state()).presenceActive, false);
+});
+
+test('late statistics do not restart a stopped or failed presence connection', async (t) => {
+  for (const stop of [false, true]) {
+    const s = await setup(t);
+    await s.action('connect', credentials);
+    s.calls[0].output({ event: 'diagnostics', data: diagnostics(sample()) });
+    assert.equal(s.calls[1].mode, 'online');
+    if (stop) await s.action('stop');
+    else {
+      s.calls[1].finish(1);
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+    s.calls[0].output({ event: 'diagnostics', data: diagnostics(sample()) });
+    s.calls[0].finish();
+    await s.settled();
+    assert.equal(s.calls.length, 2);
+    assert.equal((await s.state()).presenceActive, false);
+  }
 });
 
 test('explicit demo has rich Arabic inventory and refuses every real connection or mutation', async (t) => {
@@ -1184,12 +1207,14 @@ test('HTTP bridge drives the real worker over stdin with mocked GET-only Discord
   });
   const mock = path.join(s.sessionDir, 'http-mock-fetch.mjs'),
     requests = path.join(s.sessionDir, 'requests.jsonl'),
+    statisticsRelease = path.join(s.sessionDir, 'release-statistics'),
     helper = new URL('./helpers/fake.mjs', import.meta.url).href;
   fs.writeFileSync(
     mock,
     `import fs from 'node:fs';import {sample,fakeServer} from ${JSON.stringify(helper)};
     const server=fakeServer(sample());globalThis.fetch=async(url,options)=>{if(options.method!=='GET')throw new Error('HTTP test forbids Discord writes');
     fs.appendFileSync(${JSON.stringify(requests)},JSON.stringify({method:options.method,url})+'\\n');const u=new URL(url);
+    if(u.pathname.endsWith('/roles/member-counts'))while(!fs.existsSync(${JSON.stringify(statisticsRelease)}))await new Promise(resolve=>setTimeout(resolve,10));
     return new Response(JSON.stringify(await server.api.get(u.pathname.replace('/api/v10','')+u.search)));};`,
   );
   const prior = process.env.NODE_OPTIONS;
@@ -1199,6 +1224,16 @@ test('HTTP bridge drives the real worker over stdin with mocked GET-only Discord
     else process.env.NODE_OPTIONS = prior;
   });
   assert.equal((await s.action('inventory', credentials)).status, 202);
+  let initial;
+  for (let i = 0; i < 600; i++) {
+    initial = await s.state();
+    if (initial.diagnostics) break;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  assert.equal(initial.diagnostics?.guildId, ID);
+  assert.equal(initial.busy, true);
+  assert.equal(initial.inventory.memberStatistics.total, null);
+  fs.writeFileSync(statisticsRelease, 'ready');
   const inventory = await s.settled();
   assert.equal(inventory.diagnostics.guildId, ID);
   assert.ok(inventory.inventory.channels.length > 0);

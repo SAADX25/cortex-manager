@@ -72,6 +72,10 @@
     if (d.staffRoleIds.length > 20 || d.requesterRoleIds.length > 20) return 'tickets.role_limit';
     return null;
   }
+  function panelMarkup(p) {
+    const v = p.panel;
+    return `<div class="ticket-panel-message" dir="ltr" lang="en"><h3>${esc(v.title)}</h3><button type="button" class="btn btn-primary" disabled>${esc(v.button)}</button></div>`;
+  }
   function draw() {
     if (!saved && !loading && !error) void load();
     const d = draft(),
@@ -82,6 +86,36 @@
     const dirty =
       JSON.stringify(d) !==
       JSON.stringify(saved?.config.guilds.find((g) => g.guildId === d.guildId));
+    const candidate = model.state.messagePreview;
+    const panelReview =
+      !dirty &&
+      candidate?.kind === 'ticket-panel' &&
+      candidate.guildId === d.guildId &&
+      candidate.settingsRevision === saved?.revision
+        ? candidate
+        : null;
+    const panelBlocked =
+      !saved ||
+      loading ||
+      saving ||
+      validation({ ...d, enabled: true }) ||
+      busy() ||
+      model.state.demo;
+    const needsSave = dirty || !d.enabled;
+    const panelReason = model.state.demo
+      ? 'ui.demo_mode_sending_is_disabled'
+      : loading || !saved
+        ? 'welcome.loading_settings'
+        : saving
+          ? 'social.saving'
+          : busy()
+            ? 'ui.working'
+            : validation({ ...d, enabled: true }) ||
+              (needsSave
+                ? 'tickets.publish_save_first'
+                : panelReview
+                  ? 'tickets.publish_ready'
+                  : 'tickets.publish_review_first');
     $('#main').innerHTML = `<div class="welcome-page" translate="no">
       <section class="panel"><div class="panel-header"><h2>${icon('log')}${t('tickets.title')}</h2><span class="pill purple">${t('welcome.local_settings')}</span></div>
       <div class="panel-body"><p>${t('tickets.intro')}</p><div class="welcome-room-toolbar"><strong dir="auto">${esc(guildName())}</strong>
@@ -110,6 +144,13 @@
       <div class="ticket-command"><code dir="ltr">/ticket-claim</code><span>${t('tickets.command_claim')}</span></div>
       <div class="ticket-command"><code dir="ltr">/ticket-close</code><span>${t('tickets.command_close')}</span></div>
       <div class="ticket-command"><code dir="ltr">/ticket-resolve</code><span>${t('tickets.command_resolve')}</span></div></div></section>
+      <section class="panel"><div class="panel-header"><h2>${icon('log')}${t('tickets.publish_title')}</h2></div><div class="panel-body">
+      <p>${t('tickets.publish_help')}</p><p class="field-help">${t('tickets.panel_channel')}: <span dir="auto">${esc(channels.find((c) => c.id === d.panelChannelId)?.name ?? d.panelChannelId)}</span></p>
+      <p class="field-help" role="status">${t(panelReason)}</p>
+      ${panelReview ? panelMarkup(panelReview) : ''}
+      <div class="dialog-actions"><button type="button" class="btn btn-ghost" id="previewTicketPanel" ${panelBlocked ? 'disabled' : ''}>${icon('eye')}${t(!d.enabled ? 'tickets.publish_enable_preview' : dirty ? 'tickets.publish_save_preview' : 'tickets.publish_preview')}</button>
+      <button type="button" class="btn btn-primary" id="publishTicketPanel" ${panelBlocked || needsSave || !panelReview ? 'disabled' : ''}>${icon('check')}${t('tickets.publish_send')}</button></div>
+      <p class="field-help">${t('tickets.publish_runtime')}</p></div></section>
       <section class="panel"><div class="panel-body"><p>${t('tickets.export_saved')}</p><div class="dialog-actions">
       <button class="btn btn-primary" id="saveTickets" ${!saved || saving || loading ? 'disabled' : ''}>${icon('check')}${saving ? t('social.saving') : t('welcome.save_settings')}</button>
       <button class="btn btn-ghost" id="exportTickets" ${!saved || saving || dirty || model.state.demo ? 'disabled' : ''}>${icon('log')}${t('deployment.title')}</button>
@@ -145,20 +186,30 @@
           draw();
         }),
     );
-    $('#saveTickets').onclick = () => {
+    const reviewSave = (previewAfter = false) => {
       if (!saved || saving) return;
-      const issue = validation(d);
+      const candidate = structuredClone(d);
+      if (previewAfter) candidate.enabled = true;
+      const draftAtReview = JSON.stringify(d),
+        revisionAtReview = saved.revision;
+      const issue = validation(candidate);
       if (issue) return toast(t(issue), 'error');
       const label = (items, id) => items.find((item) => item.id === id)?.name ?? id;
       const roleNames = (ids) => ids.map((id) => label(roles, id)).join('، ');
-      showDialog(`<div translate="no"><h2>${t('tickets.confirm')}</h2><p dir="auto">${esc(guildName())}</p><p>${d.enabled ? t('ui.enable') : t('welcome.disabled')}</p>
+      showDialog(`<div translate="no"><h2>${t('tickets.confirm')}</h2><p dir="auto">${esc(guildName())}</p><p>${candidate.enabled ? t('ui.enable') : t('welcome.disabled')}</p>
         <p>${t('tickets.panel_channel')}: ${esc(label(channels, d.panelChannelId))}</p><p>${t('tickets.category')}: ${esc(label(categories, d.categoryId))}</p>
         <p>${t('tickets.staff_roles')}: ${esc(roleNames(d.staffRoleIds))}</p><p>${t('tickets.requester_roles')}: ${esc(roleNames(d.requesterRoleIds) || t('tickets.everyone'))}</p>
         <p>${t('tickets.activation')}</p><div class="dialog-actions"><button class="btn btn-ghost" value="cancel">${t('ui.cancel')}</button><button type="button" class="btn btn-primary" id="confirmTicketSave">${t('social.approve_save')}</button></div></div>`);
-      const candidate = structuredClone(d);
       $('#confirmTicketSave').onclick = async () => {
         if (saving) return;
+        if (
+          guildId() !== candidate.guildId ||
+          saved.revision !== revisionAtReview ||
+          JSON.stringify(draft()) !== draftAtReview
+        )
+          return toast(t('tickets.publish_stale'), 'error');
         saving = true;
+        let savedSuccessfully = false;
         $('#confirmDialog').close();
         draw();
         try {
@@ -173,6 +224,12 @@
               ],
             },
           });
+          if (JSON.stringify(drafts.get(candidate.guildId)) === draftAtReview)
+            drafts.set(
+              candidate.guildId,
+              structuredClone(saved.config.guilds.find((g) => g.guildId === candidate.guildId)),
+            );
+          savedSuccessfully = true;
           toast(t('tickets.saved'), 'success');
         } catch (e) {
           toast(e.message, 'error');
@@ -180,9 +237,56 @@
           saving = false;
           if (model.page === 'tickets') draw();
         }
+        if (
+          previewAfter &&
+          savedSuccessfully &&
+          model.page === 'tickets' &&
+          guildId() === candidate.guildId &&
+          JSON.stringify(draft()) ===
+            JSON.stringify(saved.config.guilds.find((g) => g.guildId === candidate.guildId)) &&
+          draft().enabled
+        )
+          void action('message-preview', {
+            messageRequest: { kind: 'ticket-panel', settingsRevision: saved.revision },
+          });
       };
     };
+    $('#saveTickets').onclick = () => reviewSave();
     $('#exportTickets').onclick = () => go('deployment');
+    $('#previewTicketPanel').onclick = () => {
+      if (panelBlocked) return;
+      if (needsSave) return reviewSave(true);
+      void action('message-preview', {
+        messageRequest: { kind: 'ticket-panel', settingsRevision: saved.revision },
+      });
+    };
+    $('#publishTicketPanel').onclick = () => {
+      if (panelBlocked || needsSave || !panelReview) return;
+      const p = panelReview;
+      showDialog(
+        `<div translate="no"><h2>${t('tickets.publish_confirm')}</h2><p dir="auto">${esc(guildName())} · ${esc(p.channelName)}</p>${panelMarkup(p)}<p>${t('tickets.publish_position')}</p><div class="dialog-actions"><button class="btn btn-ghost" value="cancel">${t('ui.cancel')}</button><button type="button" class="btn btn-primary" id="confirmTicketPanel">${t('tickets.publish_send')}</button></div></div>`,
+      );
+      $('#confirmTicketPanel').onclick = () => {
+        if (busy() || saving) return;
+        if (
+          guildId() !== p.guildId ||
+          saved.revision !== p.settingsRevision ||
+          model.state.messagePreview?.approvalHash !== p.approvalHash ||
+          JSON.stringify(draft()) !==
+            JSON.stringify(saved.config.guilds.find((g) => g.guildId === p.guildId))
+        )
+          return toast(t('tickets.publish_stale'), 'error');
+        $('#confirmDialog').close();
+        void action('message-send', {
+          messageConfirmation: {
+            confirmed: true,
+            guildId: p.guildId,
+            channelId: p.channelId,
+            approvalHash: p.approvalHash,
+          },
+        });
+      };
+    };
   }
   window.CortexTickets = { render: draw };
   window.addEventListener('cortex-language-changed', () => {

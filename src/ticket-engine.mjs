@@ -32,6 +32,17 @@ const closedDeny =
   P.CreatePrivateThreads |
   P.SendMessagesInThreads;
 
+function nextTicketNumber(tickets, guildId) {
+  const number =
+    1 +
+    Object.values(tickets).reduce(
+      (max, ticket) => (ticket.guildId === guildId ? Math.max(max, ticket.number ?? 0) : max),
+      0,
+    );
+  if (!Number.isSafeInteger(number)) throw new Error('Ticket numbering is exhausted.');
+  return number;
+}
+
 function readState(file) {
   if (!fs.existsSync(file)) return { version: 1, tickets: {}, seen: {} };
   if (fs.statSync(file).size > 16 * 1024 * 1024) throw new Error('Invalid ticket state.');
@@ -48,6 +59,8 @@ function readState(file) {
     Object.keys(value.seen).length > 2000
   )
     throw new Error('Invalid ticket state.');
+  const numbers = new Set(),
+    highestNumbers = new Map();
   for (const [id, t] of Object.entries(value.tickets)) {
     if (
       !snowflake(id) ||
@@ -71,6 +84,14 @@ function readState(file) {
       if (t[field] !== undefined && !Number.isFinite(t[field]))
         throw new Error('Invalid ticket status time.');
     if (
+      (t.closedReason !== undefined &&
+        (t.closedReason !== 'channel-deleted' ||
+          t.status !== 'closed' ||
+          !Number.isFinite(t.deletedAt))) ||
+      (t.deletedAt !== undefined && t.closedReason !== 'channel-deleted')
+    )
+      throw new Error('Invalid ticket deletion record.');
+    if (
       t.messageAttempt !== undefined &&
       !['sending', 'sent', 'unknown'].includes(t.messageAttempt)
     )
@@ -81,6 +102,20 @@ function readState(file) {
       throw new Error('Invalid ticket gender.');
     if (t.age !== undefined && (!Number.isInteger(t.age) || t.age < 1 || t.age > 120))
       throw new Error('Invalid ticket age.');
+    if (t.number !== undefined) {
+      const key = `${t.guildId}:${t.number}`;
+      if (!Number.isSafeInteger(t.number) || t.number < 1 || numbers.has(key))
+        throw new Error('Invalid ticket number.');
+      numbers.add(key);
+      highestNumbers.set(t.guildId, Math.max(highestNumbers.get(t.guildId) ?? 0, t.number));
+    }
+  }
+  // Assign stable per-guild references to pre-numbering records before any card update.
+  for (const ticket of Object.values(value.tickets)) {
+    if (ticket.number !== undefined) continue;
+    ticket.number = 1 + (highestNumbers.get(ticket.guildId) ?? 0);
+    if (!Number.isSafeInteger(ticket.number)) throw new Error('Ticket numbering is exhausted.');
+    highestNumbers.set(ticket.guildId, ticket.number);
   }
   if (Object.entries(value.seen).some(([id, time]) => !snowflake(id) || !Number.isFinite(time)))
     throw new Error('Invalid ticket interaction state.');
@@ -125,16 +160,16 @@ export function createTicketEngine({
       }
     }
     if (!message && !notify) {
-      if (isTicketStatusMessage(i.message, s.bot.id, ticketId) && snowflake(i.message.id))
+      if (isTicketStatusMessage(i.message, s.bot.id, ticketId, ticket) && snowflake(i.message.id))
         message = await api.get(`/channels/${ticket.channelId}/messages/${i.message.id}`);
       else {
         const messages = await api.get(`/channels/${ticket.channelId}/messages?limit=100`);
         if (!Array.isArray(messages)) throw new Error('Invalid ticket message history.');
-        message = messages.find((m) => isTicketStatusMessage(m, s.bot.id, ticketId));
+        message = messages.find((m) => isTicketStatusMessage(m, s.bot.id, ticketId, ticket));
       }
     }
     if (message) {
-      if (!snowflake(message.id) || !isTicketStatusMessage(message, s.bot.id, ticketId))
+      if (!snowflake(message.id) || !isTicketStatusMessage(message, s.bot.id, ticketId, ticket))
         throw new Error('The ticket status message is not owned by this bot.');
       ticket.messageId = message.id;
       ticket.messageAttempt = 'sent';
@@ -247,11 +282,11 @@ export function createTicketEngine({
       const details = readTicketIntake(i.data);
       if (details.error) return reply(i, c[details.error]);
       const { subject, description, gender, age } = details;
-      const previous = Object.entries(state.tickets).find(
+      const previous = Object.entries(state.tickets).filter(
         ([, t]) => t.guildId === g.guildId && t.ownerId === member.user.id && t.status !== 'closed',
       );
-      if (previous) {
-        const [id, t] = previous;
+      let recoveredDeleted = false;
+      for (const [id, t] of previous) {
         if (!t.channelId) {
           // Recover a channel created before a crash/lost response using its unique marker.
           const matches = s.channels.filter(
@@ -263,10 +298,33 @@ export function createTicketEngine({
             persist();
           }
         }
-        const existingChannel = s.channels.find((ch) => ch.id === t.channelId);
+        let existingChannel = s.channels.find((ch) => ch.id === t.channelId);
+        if (t.channelId && !existingChannel) {
+          // An absent inventory entry alone is insufficient: access failures must
+          // never release a live ticket. Only Discord's explicit Unknown Channel
+          // response for the saved ID confirms that this reservation can retire.
+          try {
+            const channel = await api.get(`/channels/${t.channelId}`);
+            if (channel?.id === t.channelId && channel.guild_id === g.guildId)
+              existingChannel = channel;
+          } catch (error) {
+            if (/HTTP 404\b/.test(error.message) && /\bcode 10003\./.test(error.message)) {
+              t.status = 'closed';
+              t.closedReason = 'channel-deleted';
+              t.deletedAt = now();
+              persist();
+              recoveredDeleted = true;
+              continue;
+            }
+            log('TICKET_CHANNEL_CHECK_FAILED');
+          }
+        }
         return reply(
           i,
-          t.channelId && existingChannel?.parent_id === g.categoryId
+          t.channelId &&
+            existingChannel?.type === 0 &&
+            existingChannel.parent_id === g.categoryId &&
+            existingChannel.topic === `cortex-ticket:${id}:${t.ownerId}`
             ? `${c.exists} <#${t.channelId}>`
             : c.uncertain,
         );
@@ -279,6 +337,7 @@ export function createTicketEngine({
         throw new Error('Missing ticket channel permissions.');
       if (Object.keys(state.tickets).length >= 10000) throw new Error('Ticket storage is full.');
       const ticket = {
+        number: nextTicketNumber(state.tickets, g.guildId),
         guildId: g.guildId,
         ownerId: member.user.id,
         channelId: null,
@@ -323,7 +382,10 @@ export function createTicketEngine({
         original: { title: subject.trim(), description: description.trim() },
         notify: true,
       });
-      return reply(i, `${c.created} <#${channel.id}>`);
+      return reply(
+        i,
+        (recoveredDeleted ? c.deletedRecovered + '\n' : '') + `${c.created} <#${channel.id}>`,
+      );
     }
     if (action === 'panel') {
       validateTargets(g, s);
@@ -332,7 +394,7 @@ export function createTicketEngine({
         !has(effectiveChannelPermissions(s, channel), P.ViewChannel | P.SendMessages | P.EmbedLinks)
       )
         throw new Error('Missing ticket panel permissions.');
-      await api.post(`/channels/${g.panelChannelId}/messages`, ticketPanelCard(c));
+      await api.post(`/channels/${g.panelChannelId}/messages`, ticketPanelCard());
       return reply(i, `${c.panelSent} <#${g.panelChannelId}>`);
     }
     const entry = Object.entries(state.tickets).find(

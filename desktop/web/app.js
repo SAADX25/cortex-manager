@@ -611,7 +611,9 @@ async function action(name, extra = {}) {
   model.pending = true;
   model.runningAction = name;
   if (['edit-apply', 'message-send'].includes(name))
-    model.operationEditorKey = model.page === 'social' ? null : editorKey(model.editor);
+    model.operationEditorKey = ['social', 'tickets'].includes(model.page)
+      ? null
+      : editorKey(model.editor);
   if (name === 'edit-apply' && !model.moveDraft && model.editor) {
     model.operationWorkspaceKey = workspaceKey(editorRequest());
     model.operationWorkspaceGuild = guildId();
@@ -1832,12 +1834,20 @@ function showNameEmojiPicker(e) {
   $('#nameEmojiSearch').onkeydown = (event) => {
     if (event.key === 'Enter') event.preventDefault();
   };
-  const chooseOwn = () => {
+  const chooseOwn = (showError = true) => {
     const value = $('#ownNameEmoji').value.trim();
     if (!validNameEmoji(value)) {
-      $('#ownEmojiHelp').textContent =
-        'الصق إيموجي واحدًا؛ الصور وأكواد مثل <:name:id> غير مدعومة في الأسماء.';
-      $('#ownNameEmoji').setAttribute('aria-invalid', 'true');
+      selected = '';
+      own = false;
+      $('#ownEmojiHelp').textContent = window.CortexI18n.text(
+        showError || value
+          ? 'ui.paste_one_unicode_emoji_images_and_codes_such_as_name_id_are_not_support'
+          : 'ui.use_unicode_emoji_for_names_custom_discord_emoji_images_do_not_render_in',
+      );
+      if (showError || value) $('#ownNameEmoji').setAttribute('aria-invalid', 'true');
+      else $('#ownNameEmoji').removeAttribute('aria-invalid');
+      updateSelection();
+      draw();
       return;
     }
     $('#ownNameEmoji').removeAttribute('aria-invalid');
@@ -1847,13 +1857,8 @@ function showNameEmojiPicker(e) {
     updateSelection();
     draw();
   };
-  $('#chooseOwnEmoji').onclick = chooseOwn;
-  $('#ownNameEmoji').oninput = () => {
-    selected = '';
-    own = false;
-    updateSelection();
-    draw();
-  };
+  $('#chooseOwnEmoji').onclick = () => chooseOwn();
+  $('#ownNameEmoji').oninput = () => chooseOwn(false);
   $('#ownNameEmoji').onkeydown = (event) => {
     if (event.key === 'Enter') {
       event.preventDefault();

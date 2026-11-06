@@ -162,6 +162,8 @@ export async function runDesktopWorker(
   if (['check', 'inventory'].includes(mode)) {
     const api = new DiscordAPI(token),
       s = await snapshot(api, guildId, { includeMembers: false });
+    // Start the verified guild connection before optional statistics requests.
+    if (mode === 'inventory') emit({ event: 'diagnostics', data: diagnostics(s) });
     s.memberStatistics = await readMemberCounts(api, guildId);
     emit({ event: 'diagnostics', data: diagnostics(s) });
     return;
@@ -256,6 +258,7 @@ export async function runDesktopWorker(
       guildId,
       config.messageRequest,
       path.join(process.cwd(), 'out'),
+      { ticketStore: createTicketStore({ root: fileURLToPath(new URL('../', import.meta.url)) }) },
     );
     emit({ event: 'message-preview', data: messagePreview(p) });
     return;
@@ -266,6 +269,7 @@ export async function runDesktopWorker(
       guildId,
       config.messageConfirmation,
       path.join(process.cwd(), 'out'),
+      { ticketStore: createTicketStore({ root: fileURLToPath(new URL('../', import.meta.url)) }) },
     );
     emit({ event: 'message-sent', data: result });
     return;

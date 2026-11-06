@@ -552,14 +552,30 @@ export async function createDesktopServer({
       state.connected = false;
       log('اكتمل حفظ التعديل. حدّث السيرفر لرؤية النتيجة.');
     }
+    return event.event;
   };
   function launch(mode, config, online = false, connectAfter = false) {
     const epoch = presenceEpoch;
+    let connectPending = connectAfter && !presenceWorker;
     const options = {
       cwd: sessionDir,
       root,
       onOutput: (line) => {
-        if (!online || epoch === presenceEpoch) output(line, mode);
+        if (!online || epoch === presenceEpoch) {
+          const event = output(line, mode);
+          if (
+            connectPending &&
+            event === 'diagnostics' &&
+            state.connected &&
+            epoch === presenceEpoch &&
+            !closed &&
+            !presenceWorker &&
+            !presenceStopping
+          ) {
+            connectPending = false;
+            launch('online', config, true);
+          }
+        }
       },
       onError: (line) => {
         state.error ??= redact(line);
@@ -634,15 +650,6 @@ export async function createDesktopServer({
                 : 'اكتملت العملية.',
             'success',
           );
-          if (
-            connectAfter &&
-            state.connected &&
-            epoch === presenceEpoch &&
-            !closed &&
-            !presenceWorker &&
-            !presenceStopping
-          )
-            launch('online', config, true);
         }
       })
       .catch((error) => {

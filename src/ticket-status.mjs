@@ -1,4 +1,9 @@
 const prefix = 'cortex:ticket:';
+export const ticketPanelText = Object.freeze({
+  language: 'en',
+  title: 'Support',
+  button: 'Open ticket',
+});
 export const IS_COMPONENTS_V2 = 1 << 15;
 export const TICKET_COLORS = Object.freeze({
   waiting: 0xed4245,
@@ -18,9 +23,10 @@ export function ticketCardIssue(message) {
   if (Number(message?.flags ?? 0) & IS_COMPONENTS_V2) {
     const title = text(message, 3);
     const description = text(message, 6);
-    if (typeof title !== 'string' || !title.startsWith('## ') || typeof description !== 'string')
+    const heading = typeof title === 'string' && /^(?:##|###) /.exec(title);
+    if (!heading || typeof description !== 'string')
       throw new Error('Invalid ticket card issue content.');
-    return { title: title.slice(3), description };
+    return { title: title.slice(heading[0].length), description };
   }
   return message?.embeds?.[0] ?? {};
 }
@@ -34,38 +40,19 @@ export function ticketStatusCard(ticket, ticketId, copy, original = {}) {
     : ticket.claimedBy
       ? 'claimed'
       : 'waiting';
-  const sameStaff = closed && ticket.resolvedBy && ticket.resolvedBy === ticket.claimedBy;
-  const status = [`## ${copy['status_' + phase]}`];
-  if (sameStaff || ticket.claimedBy || !ticket.resolvedBy)
-    status.push(
-      `**${sameStaff ? copy.handlerResolverLabel : copy.handlerLabel}:** ${ticket.claimedBy ? member(ticket.claimedBy) : copy.unassigned}`,
-    );
-  if (closed && ticket.resolvedBy && !sameStaff)
-    status.push(`**${copy.resolvedByLabel}:** ${member(ticket.resolvedBy)}`);
-  const profile = [
-    `## ${copy.requestInfo}`,
-    `**${copy.requesterLabel}:** ${member(ticket.ownerId)}`,
-  ];
+  const [statusIcon, ...statusLabel] = copy['status_' + phase].split(' ');
   const details = [];
-  if (ticket.gender)
-    details.push(
-      `**${copy.genderLabel}:** ${ticket.gender === 'male' ? copy.genderMale : copy.genderFemale}`,
-    );
-  if (ticket.age !== undefined)
-    details.push(`**${copy.ageLabel}:** ${copy.ageYears.replace('{age}', String(ticket.age))}`);
-  if (details.length) profile.push(details.join('   •   '));
+  if (ticket.gender) details.push(ticket.gender === 'male' ? copy.genderMale : copy.genderFemale);
+  if (ticket.age !== undefined) details.push(copy.ageYears.replace('{age}', String(ticket.age)));
+  const handler = ticket.claimedBy ?? ticket.resolvedBy;
+  const profile = [
+    `**${copy.requesterLabel}:** ${member(ticket.ownerId)}${details.length ? '  ' + details.join(' · ') : ''}`,
+    `**${copy.handlerLabel}:** ${handler ? member(handler) : copy.unassigned}`,
+  ];
+  if (closed && ticket.resolvedBy && ticket.claimedBy && ticket.resolvedBy !== ticket.claimedBy)
+    profile.push(`**${copy.resolvedByLabel}:** ${member(ticket.resolvedBy)}`);
   const buttons = closed
-    ? [
-        {
-          type: 2,
-          id: 12,
-          style: ticket.resolvedBy ? 3 : 2,
-          custom_id: prefix + 'closed',
-          label: ticket.resolvedBy ? copy.resolvedButton : copy.closedButton,
-          emoji: { name: ticket.resolvedBy ? '✅' : '🔒' },
-          disabled: true,
-        },
-      ]
+    ? []
     : [
         {
           type: 2,
@@ -85,7 +72,8 @@ export function ticketStatusCard(ticket, ticketId, copy, original = {}) {
           emoji: { name: '✅' },
         },
       ];
-  const time = Math.floor((ticket.resolvedAt ?? ticket.claimedAt ?? ticket.createdAt) / 1000);
+  const time = Math.floor(ticket.createdAt / 1000);
+  const reference = String(ticket.number ?? ticketId).padStart(4, '0');
   return {
     flags: IS_COMPONENTS_V2,
     allowed_mentions: { parse: [] },
@@ -95,17 +83,13 @@ export function ticketStatusCard(ticket, ticketId, copy, original = {}) {
         id: 1,
         accent_color: TICKET_COLORS[phase],
         components: [
-          display(2, `# 🎫 ${copy.cardTitle}\n-# ${copy.supportBrand}`),
-          display(3, `## ${original.title || copy.title}`),
-          separator(4),
-          display(5, `## ${copy.issueDetails}`),
+          display(8, `${statusIcon} **${statusLabel.join(' ')}**`),
+          display(3, `### ${original.title || copy.title}`),
           display(6, original.description || copy.noIssueDetails),
-          separator(7),
-          display(8, status.join('\n')),
           separator(9),
           display(10, profile.join('\n')),
-          { type: 1, id: 11, components: buttons },
-          display(14, `-# Cortex • ${ticketId} · <t:${time}:f>`),
+          display(14, `-# Cortex · #${reference} · ${copy.openedLabel} <t:${time}:t>`),
+          ...(buttons.length ? [{ type: 1, id: 11, components: buttons }] : []),
         ],
       },
     ],
@@ -125,7 +109,7 @@ export function ticketStatusEdit(ticket, ticketId, copy, message) {
   return payload;
 }
 
-export function ticketPanelCard(copy) {
+export function ticketPanelCard() {
   return {
     flags: IS_COMPONENTS_V2,
     allowed_mentions: { parse: [] },
@@ -135,12 +119,7 @@ export function ticketPanelCard(copy) {
         id: 1,
         accent_color: 0x9888ff,
         components: [
-          display(2, `# ${copy.panelTitle}`),
-          display(3, copy.panel),
-          separator(4),
-          display(5, `## ${copy.panelStepsLabel}\n${copy.panelSteps}`),
-          separator(6),
-          display(7, `## ${copy.panelFollowupLabel}\n${copy.panelFollowup}`),
+          display(2, `### ${ticketPanelText.title}`),
           {
             type: 1,
             id: 9,
@@ -150,26 +129,25 @@ export function ticketPanelCard(copy) {
                 id: 10,
                 style: 1,
                 custom_id: prefix + 'open',
-                label: copy.open,
-                emoji: { name: '🎫' },
+                label: ticketPanelText.button,
               },
             ],
           },
-          display(14, `-# ${copy.panelFooter}`),
         ],
       },
     ],
   };
 }
 
-export function isTicketStatusMessage(message, botId, ticketId) {
+export function isTicketStatusMessage(message, botId, ticketId, ticket = {}) {
   if (message?.author?.id !== botId || message.webhook_id) return false;
   if (Number(message.flags ?? 0) & IS_COMPONENTS_V2) {
     const marker = text(message, 14),
       expected = `-# Cortex • ${ticketId}`;
-    return (
-      typeof marker === 'string' && (marker === expected || marker.startsWith(expected + ' · '))
-    );
+    if (typeof marker !== 'string') return false;
+    if (marker === expected || marker.startsWith(expected + ' · ')) return true;
+    const reference = String(ticket.number ?? ticketId).padStart(4, '0');
+    return marker.startsWith(`-# Cortex · #${reference} · `);
   }
   if (message.embeds?.[0]?.footer?.text === `Cortex • ${ticketId}`) return true;
   const ids = (message.components ?? [])

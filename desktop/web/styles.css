@@ -7728,6 +7728,33 @@ html[data-density='compact'] .field {
   flex: 0 0 135px;
   color: #b7aaff;
 }
+
+.ticket-panel-message {
+  max-width: 580px;
+  margin-block: 20px;
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-inline-start: 4px solid var(--accent);
+  border-radius: 10px;
+  background: var(--bg);
+  overflow-wrap: anywhere;
+}
+.ticket-panel-message h3 {
+  margin: 0 0 12px;
+}
+.ticket-panel-message p {
+  margin-block: 8px 16px;
+}
+.ticket-panel-message hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin-block: 16px;
+}
+.ticket-panel-message small {
+  display: block;
+  margin-top: 12px;
+  color: var(--muted);
+}
 @media (max-width: 650px) {
   .ticket-command {
     flex-direction: column;

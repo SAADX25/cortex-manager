@@ -13,7 +13,10 @@ import { P } from '../src/permissions.mjs';
 import { createHash } from 'node:crypto';
 import { messagePreview } from '../src/messages.mjs';
 import { validateMessageImage } from '../src/message-image.mjs';
-import { sample, fakeServer, ID, BOT_ROLE } from './helpers/fake.mjs';
+import { sample, fakeServer, ID, BOT_ROLE, BOT, LEGACY, MEMBER } from './helpers/fake.mjs';
+import { createTicketStore, ticketDefaults } from '../src/ticket-config.mjs';
+import { ticketPanelCard, ticketPanelText, IS_COMPONENTS_V2 } from '../src/ticket-status.mjs';
+import { createTicketEngine } from '../src/ticket-engine.mjs';
 
 function temp(t) {
   const base = path.resolve(os.tmpdir()),
@@ -34,6 +37,156 @@ const confirmation = (p) => ({
   guildId: p.guildId,
   channelId: p.channelId,
   approvalHash: p.approvalHash,
+});
+
+function panelFixture(t, language = 'ar') {
+  const root = temp(t),
+    store = createTicketStore({ root }),
+    server = fakeServer(sample());
+  const saved = store.save({
+    baseRevision: store.read().revision,
+    confirmAutomatic: true,
+    config: {
+      version: 1,
+      guilds: [
+        {
+          ...ticketDefaults(ID),
+          enabled: true,
+          panelChannelId: '777777777777777777',
+          categoryId: '666666666666666666',
+          staffRoleIds: [LEGACY],
+          language,
+        },
+      ],
+    },
+  });
+  return {
+    root,
+    store,
+    server,
+    saved,
+    request: { kind: 'ticket-panel', settingsRevision: saved.revision },
+    options: { ticketStore: store },
+  };
+}
+
+test('reviewed ready-made support panels publish only to the saved channel and their button opens private language selection', async (t) => {
+  for (const language of ['ar', 'en']) {
+    const h = panelFixture(t, language),
+      directory = path.join(h.root, 'review');
+    const p = await previewMessage(h.server.api, ID, h.request, directory, h.options);
+    assert.equal(h.server.calls.length, 0);
+    assert.equal(p.kind, 'ticket-panel');
+    assert.equal(p.channelId, h.saved.config.guilds[0].panelChannelId);
+    assert.equal(messagePreview(p).panel.button, ticketPanelText.button);
+    assert.equal(messagePreview(p).settingsRevision, h.saved.revision);
+    assert.ok(messagePreview(p).summary.includes(ticketPanelText.button));
+    const expected = ticketPanelCard();
+    assert.deepEqual(p.body.components, expected.components);
+    await sendMessage(h.server.api, ID, confirmation(p), directory, h.options);
+    assert.equal(h.server.calls.length, 1);
+    const sent = h.server.calls[0];
+    assert.equal(sent.path, `/channels/${p.channelId}/messages`);
+    assert.equal(sent.body.flags, IS_COMPONENTS_V2);
+    assert.deepEqual(sent.body.allowed_mentions.parse, []);
+    for (const legacy of ['content', 'embeds', 'poll', 'sticker_ids'])
+      assert.ok(!Object.hasOwn(sent.body, legacy));
+    const openButton = sent.body.components[0].components.find((c) => c.type === 1).components[0];
+    const responses = [];
+    const engine = createTicketEngine({
+      api: h.server.api,
+      responseAPI: { post: async (route, body) => responses.push({ route, body }) },
+      config: h.saved.config,
+      stateFile: path.join(h.root, 'state.json'),
+    });
+    await engine.handle({
+      id: '123400000000000000',
+      application_id: BOT,
+      guild_id: ID,
+      channel_id: p.channelId,
+      token: 'mock-token',
+      type: 3,
+      member: { user: { id: MEMBER }, roles: [] },
+      data: { custom_id: openButton.custom_id },
+    });
+    assert.equal(responses[0].body.data.flags, 64);
+    assert.ok(
+      responses[0].body.data.components[0].components.some((c) =>
+        c.custom_id.startsWith('cortex:ticket:language:ar:'),
+      ),
+    );
+    assert.ok(
+      responses[0].body.data.components[0].components.some((c) =>
+        c.custom_id.startsWith('cortex:ticket:language:en:'),
+      ),
+    );
+    await assert.rejects(
+      sendMessage(h.server.api, ID, confirmation(p), directory, h.options),
+      /سبق بدء/,
+    );
+    assert.equal(h.server.calls.length, 1);
+  }
+});
+
+test('support message previews reject custom destinations and stale settings; publishing rechecks saved configuration and permissions', async (t) => {
+  const h = panelFixture(t),
+    directory = path.join(h.root, 'review'),
+    nonce = 'a'.repeat(24),
+    s = sample();
+  for (const extra of [
+    { channelId: s.channels[0].id },
+    { content: 'override' },
+    { components: [] },
+    { settingsRevision: '0'.repeat(64) },
+  ])
+    assert.throws(() =>
+      prepareMessage(s, { ...h.request, ...extra }, nonce, { ticketSettings: h.saved }),
+    );
+  assert.throws(() => prepareMessage(s, h.request, nonce));
+  const p = await previewMessage(h.server.api, ID, h.request, directory, h.options);
+  h.store.save({
+    baseRevision: h.saved.revision,
+    confirmAutomatic: true,
+    config: { version: 1, guilds: [{ ...h.saved.config.guilds[0], language: 'en' }] },
+  });
+  await assert.rejects(
+    sendMessage(h.server.api, ID, confirmation(p), directory, h.options),
+    /تغيّرت إعدادات/,
+  );
+  assert.equal(h.server.calls.length, 0);
+  const fresh = await previewMessage(
+    h.server.api,
+    ID,
+    { kind: 'ticket-panel', settingsRevision: h.store.read().revision },
+    directory,
+    h.options,
+  );
+  h.server.state.roles[0].permissions = '0';
+  h.server.state.roles.find((r) => r.id === BOT_ROLE).permissions = '0';
+  await assert.rejects(
+    sendMessage(h.server.api, ID, confirmation(fresh), directory, h.options),
+    /صلاحيت/,
+  );
+  assert.equal(h.server.calls.length, 0);
+});
+
+test('support message publication requires enabled settings and existing configured destinations and roles', (t) => {
+  const h = panelFixture(t),
+    nonce = 'a'.repeat(24);
+  for (const mode of ['disabled', 'category', 'role', 'channel', 'guild']) {
+    const s = sample(),
+      saved = structuredClone(h.saved);
+    if (mode === 'disabled') saved.config.guilds[0].enabled = false;
+    if (mode === 'category') s.channels = s.channels.filter((c) => c.type !== 4);
+    if (mode === 'role') s.roles = s.roles.filter((r) => r.id !== LEGACY);
+    if (mode === 'channel') s.channels[1].type = 2;
+    if (mode === 'guild') s.guild.id = '999999999999999990';
+    assert.throws(
+      () => prepareMessage(s, h.request, nonce, { ticketSettings: saved }),
+      undefined,
+      mode,
+    );
+  }
 });
 
 const png = Buffer.from(

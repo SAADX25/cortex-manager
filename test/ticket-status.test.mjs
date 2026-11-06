@@ -14,6 +14,7 @@ import { ticketCopy } from '../src/ticket-locales.mjs';
 const id = '123400000000000000',
   bot = '222222222222222222';
 const ticket = {
+  number: 42,
   status: 'open',
   ownerId: '888888888888888888',
   claimedBy: null,
@@ -36,7 +37,7 @@ function validLayout(payload) {
   );
 }
 
-test('modern request cards use large headings and native separators for both languages and all states', () => {
+test('compact request cards prioritize status and issue, retaining profiles and opening time in both languages', () => {
   for (const copy of Object.values(ticketCopy))
     for (const change of [
       {},
@@ -49,15 +50,33 @@ test('modern request cards use large headings and native separators for both lan
       });
       validLayout(payload);
       const nodes = walk(payload.components);
-      assert.ok(nodes.some((c) => c.type === 10 && c.content.startsWith('# 🎫 ')));
-      assert.ok(nodes.filter((c) => c.type === 14 && c.spacing === 2).length >= 3);
+      const content = payload.components[0].components;
+      assert.deepEqual(
+        content.slice(0, 6).map((c) => c.id),
+        [8, 3, 6, 9, 10, 14],
+      );
+      assert.ok(content[1].content.startsWith('### '));
+      assert.equal(nodes.filter((c) => c.type === 14).length, 1);
+      assert.equal(content[4].content.split('\n').length, 2);
+      assert.ok(
+        content[4].content
+          .split('\n')[0]
+          .includes(copy.genderMale + ' · ' + copy.ageYears.replace('{age}', '24')),
+      );
+      assert.equal(
+        content[5].content,
+        `-# Cortex · #0042 · ${copy.openedLabel} <t:${ticket.createdAt / 1000}:t>`,
+      );
+      assert.equal(content.filter((c) => c.type === 1).length, change.status === 'closed' ? 0 : 1);
       const message = { ...payload, author: { id: bot } };
       assert.deepEqual(ticketCardIssue(message), {
         title: 'A'.repeat(100),
         description: 'و'.repeat(1500),
       });
-      assert.ok(isTicketStatusMessage(message, bot, id));
-      assert.ok(!isTicketStatusMessage(message, bot, '123400000000000001'));
+      assert.ok(isTicketStatusMessage(message, bot, id, ticket));
+      assert.ok(
+        !isTicketStatusMessage(message, bot, '123400000000000001', { ...ticket, number: 43 }),
+      );
     }
   validLayout(ticketPanelCard(ticketCopy.ar));
   validLayout(ticketPanelCard(ticketCopy.en));
@@ -99,6 +118,32 @@ test('legacy migration clears incompatible fields while preserving issue text an
   assert.deepEqual(claimed.allowed_mentions, { parse: [] });
 });
 
+test('previous V2 cards preserve the original issue when headings and footer are compacted', () => {
+  const old = ticketStatusCard(ticket, id, ticketCopy.ar, {
+    title: 'عنوان محفوظ',
+    description: 'تفاصيل\nبدون تغيير',
+  });
+  old.components[0].components.find((c) => c.id === 3).content = '## عنوان محفوظ';
+  old.components[0].components.find((c) => c.id === 14).content = `-# Cortex • ${id} · <t:1234:f>`;
+  old.author = { id: bot };
+  assert.ok(isTicketStatusMessage(old, bot, id, ticket));
+  const updated = ticketStatusEdit(
+    { ...ticket, claimedBy: '888888888888888889', claimedAt: ticket.createdAt + 60000 },
+    id,
+    ticketCopy.ar,
+    old,
+  );
+  assert.deepEqual(ticketCardIssue(updated), {
+    title: 'عنوان محفوظ',
+    description: 'تفاصيل\nبدون تغيير',
+  });
+  assert.equal(
+    updated.components[0].components.find((c) => c.id === 14).content,
+    `-# Cortex · #0042 · فُتح <t:${ticket.createdAt / 1000}:t>`,
+  );
+  assert.ok(isTicketStatusMessage({ ...updated, author: { id: bot } }, bot, id, ticket));
+});
+
 test('user text cannot impersonate the status marker and malformed modern cards fail closed', () => {
   const payload = ticketStatusCard(ticket, id, ticketCopy.ar, {
     title: 'x',
@@ -106,9 +151,9 @@ test('user text cannot impersonate the status marker and malformed modern cards 
   });
   const message = { ...payload, author: { id: bot } };
   message.components[0].components.find((c) => c.id === 14).content = 'not a marker';
-  assert.ok(!isTicketStatusMessage(message, bot, id));
+  assert.ok(!isTicketStatusMessage(message, bot, id, ticket));
   message.author.id = ticket.ownerId;
-  assert.ok(!isTicketStatusMessage(message, bot, id));
+  assert.ok(!isTicketStatusMessage(message, bot, id, ticket));
   const invalid = ticketStatusCard(ticket, id, ticketCopy.ar, { title: 'x', description: 'kept' });
   invalid.components[0].components = invalid.components[0].components.filter((c) => c.id !== 6);
   assert.throws(() => ticketStatusEdit(ticket, id, ticketCopy.ar, invalid), /issue content/);

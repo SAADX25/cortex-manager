@@ -1,16 +1,25 @@
 const BASE = 'https://discord.com/api/v10';
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 export class DiscordAPI {
-  constructor(token, { fetchImpl = fetch, sleep = delay } = {}) {
+  constructor(token, { fetchImpl = fetch, sleep = delay, now = Date.now } = {}) {
     if (!token) throw new Error('DISCORD_BOT_TOKEN missing');
     this.token = token;
     this.fetch = fetchImpl;
     this.sleep = sleep;
+    this.now = now;
     this.queue = Promise.resolve();
+    this.nextRequestAt = 0;
   }
   call(method, path, body, options) {
     // Serialize requests so route and global cooldowns apply to every caller.
-    const result = this.queue.then(() => this.request(method, path, body, options));
+    const result = this.queue.then(async () => {
+      // Return completed responses immediately; hold only the next queued call.
+      // Direct interaction acknowledgements intentionally bypass this queue.
+      const wait = this.nextRequestAt - this.now();
+      this.nextRequestAt = 0;
+      if (wait > 0) await this.sleep(wait);
+      return this.request(method, path, body, options);
+    });
     this.queue = result.catch(() => {});
     return result;
   }
@@ -64,11 +73,11 @@ export class DiscordAPI {
         throw new Error(
           `Discord ${method} ${path}: HTTP ${r.status}, code ${json?.code ?? 'unknown'}. ${json?.message ?? 'Request failed'}`,
         );
-      if (r.headers.get('x-ratelimit-remaining') === '0')
-        await this.sleep(
-          Math.ceil((Number(r.headers.get('x-ratelimit-reset-after')) || 1) * 1000) + 250,
-        );
-      else await this.sleep(180);
+      this.nextRequestAt =
+        this.now() +
+        (r.headers.get('x-ratelimit-remaining') === '0'
+          ? Math.ceil((Number(r.headers.get('x-ratelimit-reset-after')) || 1) * 1000) + 250
+          : 180);
       return json;
     }
     throw new Error(`Discord API exhausted rate-limit retries for ${method} ${path}`);

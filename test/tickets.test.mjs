@@ -21,7 +21,7 @@ const cardContainer = (message) => message.components.find((c) => c.type === 17 
 const cardText = (message, id) =>
   cardContainer(message).components.find((c) => c.type === 10 && c.id === id)?.content;
 const cardButtons = (message) =>
-  cardContainer(message).components.find((c) => c.type === 1).components;
+  cardContainer(message).components.find((c) => c.type === 1)?.components ?? [];
 const settings = (extra = {}) => ({
   ...ticketDefaults(ID),
   enabled: true,
@@ -54,6 +54,12 @@ function harness(t, extra = {}) {
     async get(p) {
       trace.push(['get', p]);
       if (p === '/oauth2/applications/@me') return { id: BOT };
+      const channelId = p.match(/^\/channels\/(\d+)$/)?.[1];
+      if (channelId) {
+        const channel = server.state.channels.find((c) => c.id === channelId);
+        if (!channel) throw new Error(`Discord GET ${p}: HTTP 404, code 10003. Unknown Channel`);
+        return { ...structuredClone(channel), guild_id: ID };
+      }
       const messageRoute = p.match(/^\/channels\/(\d+)\/messages(?:\/(\d+)|\?limit=100)$/);
       if (messageRoute) {
         if (messageRoute[2]) {
@@ -445,7 +451,7 @@ test('selected language, gender and normalized age persist through staff actions
   assert.equal(h.created()[0].body.parent_id, CATEGORY);
   assert.match(h.responses.at(-1).b.content, /Your ticket was opened/);
   const card = () => h.messages.get(ticket.messageId);
-  assert.match(cardText(card(), 2), /^# 🎫 Support request/);
+  assert.match(cardText(card(), 8), /^🔴 \*\*Waiting for a staff member\*\*$/);
   assert.match(cardText(card(), 10), /Female/);
   assert.match(cardText(card(), 10), /24 years/);
   const restarted = h.make();
@@ -549,8 +555,8 @@ test('one status card changes red to yellow to green, preserves the issue and re
   const messageId = ticket.messageId;
   const card = () => h.messages.get(messageId);
   assert.equal(cardContainer(card()).accent_color, TICKET_COLORS.waiting);
-  assert.match(cardText(card(), 8), /^## 🔴/);
-  assert.match(cardText(card(), 8), /لم يستلمها/);
+  assert.equal(cardText(card(), 8), '🔴 **بانتظار الاستلام**');
+  assert.match(cardText(card(), 10), /لم يستلمها/);
   assert.equal(ticketCardIssue(card()).title, 'Help @everyone');
   const originalDescription = ticketCardIssue(card()).description;
   await Promise.all([
@@ -561,10 +567,10 @@ test('one status card changes red to yellow to green, preserves the issue and re
   assert.equal(ticket.claimedBy, STAFF);
   assert.equal(cardContainer(card()).accent_color, TICKET_COLORS.claimed);
   assert.equal(ticket.claimedName, 'أحمد الدعم');
-  assert.ok(cardText(card(), 8).includes(`<@${STAFF}>`));
+  assert.ok(cardText(card(), 10).includes(`<@${STAFF}>`));
   assert.equal(card().flags & IS_COMPONENTS_V2, IS_COMPONENTS_V2);
   assert.ok(!Object.hasOwn(card(), 'content'));
-  assert.match(cardText(card(), 5), /^## /);
+  assert.match(cardText(card(), 3), /^### /);
   assert.equal(ticketCardIssue(card()).description, originalDescription);
   assert.equal(cardButtons(card())[0].disabled, true);
   const restarted = h.make();
@@ -578,15 +584,16 @@ test('one status card changes red to yellow to green, preserves the issue and re
   assert.equal(ticket.resolvedBy, OWNER);
   assert.equal(ticket.claimedBy, STAFF);
   assert.equal(cardContainer(card()).accent_color, TICKET_COLORS.resolved);
-  assert.match(cardText(card(), 8), /^## 🟢/);
-  assert.ok(cardText(card(), 8).includes(`<@${OWNER}>`));
+  assert.equal(cardText(card(), 8), '🟢 **تم حل المشكلة**');
+  assert.ok(cardText(card(), 10).includes(`<@${OWNER}>`));
+  assert.ok(cardText(card(), 10).includes(`<@${STAFF}>`));
   assert.equal(ticketCardIssue(card()).description, originalDescription);
-  assert.ok(cardButtons(card()).every((b) => b.disabled));
+  assert.deepEqual(cardButtons(card()), []);
   assert.deepEqual(card().allowed_mentions, { parse: [] });
   assert.equal(h.messages.size, 1);
 });
 
-test('the same handler and resolver is shown once, with a single completed status control', async (t) => {
+test('the same handler and resolver is shown once and completed cards have no repeated status control', async (t) => {
   const h = harness(t),
     submitted = h.interaction(),
     engine = h.make();
@@ -595,14 +602,11 @@ test('the same handler and resolver is shown once, with a single completed statu
   await engine.handle(h.interaction('ticket-claim', STAFF, ticket.channelId));
   await engine.handle(h.interaction('button:confirm-close', STAFF, ticket.channelId));
   const card = h.messages.get(ticket.messageId);
-  assert.equal(cardText(card, 8).split(`<@${STAFF}>`).length - 1, 1);
-  assert.match(cardText(card, 8), /المتابعة والحل/);
-  assert.match(cardText(card, 2), /CORTEX • مركز الدعم/);
+  assert.equal(cardText(card, 10).split(`<@${STAFF}>`).length - 1, 1);
+  assert.match(cardText(card, 10), /مسؤول الدعم/);
   assert.equal(ticketCardIssue(card).title, 'Help @everyone');
   assert.equal(ticketCardIssue(card).description, 'Details <@&999999999999999992>');
-  assert.equal(cardButtons(card).length, 1);
-  assert.equal(cardButtons(card)[0].label, 'تم حل المشكلة');
-  assert.equal(cardButtons(card)[0].disabled, true);
+  assert.deepEqual(cardButtons(card), []);
   assert.deepEqual(card.allowed_mentions, { parse: [] });
 });
 
@@ -745,10 +749,8 @@ test('support commands deny ordinary members and unselected administrator roles;
   assert.equal(h.server.calls.length, 1);
   assert.equal(h.server.calls[0].path, `/channels/${PANEL}/messages`);
   const panel = h.server.calls[0].body;
-  assert.match(cardText(panel, 2), /^# 🎫 كيف نقدر نساعدك/);
-  assert.match(cardText(panel, 5), /^## /);
-  assert.match(cardText(panel, 7), /^## /);
-  assert.equal(cardButtons(panel)[0].label, 'فتح تذكرة دعم');
+  assert.equal(cardText(panel, 2), '### Support');
+  assert.equal(cardButtons(panel)[0].label, 'Open ticket');
   assert.deepEqual(panel.allowed_mentions, { parse: [] });
 });
 
@@ -799,6 +801,183 @@ test('lost creation response reconciles the unique channel after restart without
   await h.make().handle(h.interaction());
   assert.equal(h.created().length, 1);
   assert.equal(Object.values(h.read().tickets)[0].status, 'open');
+});
+
+test('short references migrate old records, stay stable across updates and continue after historic numbers', async (t) => {
+  const h = harness(t),
+    submitted = h.interaction();
+  await h.make().handle(submitted);
+  const state = h.read(),
+    ticket = state.tickets[submitted.id];
+  assert.equal(ticket.number, 1);
+  delete ticket.number;
+  const historicalId = '999999999999999990';
+  state.tickets[historicalId] = { ...ticket, number: 42, status: 'closed', channelId: null };
+  state.tickets['999999999999999991'] = {
+    ...ticket,
+    guildId: '999999999999999992',
+    number: 43,
+    status: 'closed',
+    channelId: null,
+  };
+  const message = h.messages.get(ticket.messageId);
+  cardContainer(message).components.find((c) => c.id === 14).content =
+    `-# Cortex • ${submitted.id} · <t:1234:f>`;
+  cardContainer(message).components.find((c) => c.id === 3).content = '## Help @everyone';
+  fs.writeFileSync(h.stateFile, JSON.stringify(state));
+  await h.make().handle(h.interaction('ticket-claim', STAFF, ticket.channelId));
+  const migrated = h.read().tickets[submitted.id];
+  assert.equal(migrated.number, 43);
+  assert.match(cardText(h.messages.get(ticket.messageId), 14), /Cortex · #0043 · فُتح/);
+  assert.equal(ticketCardIssue(h.messages.get(ticket.messageId)).title, 'Help @everyone');
+  await h.make().handle(h.interaction('button:confirm-close', STAFF, ticket.channelId));
+  assert.equal(h.read().tickets[submitted.id].number, 43);
+  const replacement = h.interaction();
+  await h.make().handle(replacement);
+  assert.equal(h.read().tickets[replacement.id].number, 44);
+  await h.make().handle(h.interaction());
+  assert.equal(h.created().length, 2);
+});
+
+test('invalid or duplicate per-guild ticket references fail without overwriting saved state', async (t) => {
+  const h = harness(t),
+    submitted = h.interaction();
+  await h.make().handle(submitted);
+  const initial = h.read();
+  for (const number of [0, -1, 1.5, '42', Number.MAX_SAFE_INTEGER + 1, 'duplicate']) {
+    const state = structuredClone(initial);
+    if (number === 'duplicate')
+      state.tickets['999999999999999990'] = { ...state.tickets[submitted.id] };
+    else state.tickets[submitted.id].number = number;
+    const bytes = JSON.stringify(state);
+    fs.writeFileSync(h.stateFile, bytes);
+    assert.throws(() => h.make(), /ticket number/i);
+    assert.equal(fs.readFileSync(h.stateFile, 'utf8'), bytes);
+  }
+});
+
+test('deleted ticket channels release only their reservation across restarts and concurrent requests', async (t) => {
+  for (const language of ['ar', 'en']) {
+    const h = harness(t, { language }),
+      submitted = h.interaction();
+    await h.make().handle(submitted);
+    const oldTicket = h.read().tickets[submitted.id];
+    await h.make().handle(h.interaction('ticket-claim', STAFF, oldTicket.channelId));
+    h.server.state.channels = h.server.state.channels.filter((c) => c.id !== oldTicket.channelId);
+    const engine = h.make(),
+      first = h.interaction(),
+      second = h.interaction();
+    await Promise.all([engine.handle(first), engine.handle(second)]);
+    assert.equal(h.created().length, 2, 'only one replacement channel is created');
+    const state = h.read(),
+      archived = state.tickets[submitted.id],
+      replacement = state.tickets[first.id];
+    assert.equal(archived.status, 'closed');
+    assert.equal(archived.closedReason, 'channel-deleted');
+    assert.ok(Number.isFinite(archived.deletedAt));
+    assert.equal(archived.resolvedBy, undefined);
+    assert.equal(archived.resolvedAt, undefined);
+    assert.equal(archived.claimedBy, STAFF);
+    assert.equal(archived.channelId, oldTicket.channelId);
+    assert.equal(replacement.status, 'open');
+    assert.notEqual(replacement.channelId, oldTicket.channelId);
+    assert.equal(
+      cardContainer(h.messages.get(replacement.messageId)).accent_color,
+      TICKET_COLORS.waiting,
+    );
+    const response = h.responses.findLast(
+      (r) => r.method === 'PATCH' && r.p.includes(`/${first.token}/`),
+    );
+    // The duplicate attempt may be the last webhook; inspect the replacement's own reply.
+    assert.ok(response);
+    assert.ok(
+      h.responses.some((r) =>
+        r.b.content?.includes(language === 'ar' ? 'لم تُسجَّل' : 'not marked resolved'),
+      ),
+    );
+    await h.make().handle(h.interaction());
+    assert.equal(h.created().length, 2, 'replacement remains reserved after restart');
+    assert.ok(!h.server.calls.some((c) => c.method === 'DELETE'));
+  }
+});
+
+test('channel access failures, ambiguous errors and moved channels never release a ticket', async (t) => {
+  for (const failure of [
+    'HTTP 403, code 50001. Missing Access',
+    'HTTP 403, code 10003. Unknown Channel',
+    'HTTP 404, code unknown. Request failed',
+    'HTTP 404, code 10008. Unknown Message',
+    'HTTP 503, code unknown. Request failed',
+    'network disconnected',
+    'moved',
+    'marker-changed',
+    'malformed-response',
+  ]) {
+    const h = harness(t),
+      submitted = h.interaction();
+    await h.make().handle(submitted);
+    const oldTicket = h.read().tickets[submitted.id],
+      get = h.api.get;
+    const channel = h.server.state.channels.find((c) => c.id === oldTicket.channelId);
+    if (failure === 'moved') channel.parent_id = '999999999999999994';
+    else if (failure === 'marker-changed') channel.topic = 'unrelated';
+    else {
+      h.api.get = async (route) => {
+        if (route === `/guilds/${ID}/channels`)
+          return (await get(route)).filter((c) => c.id !== oldTicket.channelId);
+        if (route === `/channels/${oldTicket.channelId}`) {
+          if (failure === 'malformed-response')
+            return { id: oldTicket.channelId, guild_id: '999999999999999994' };
+          throw new Error(failure);
+        }
+        return get(route);
+      };
+    }
+    await h.make().handle(h.interaction());
+    assert.equal(h.created().length, 1, failure);
+    assert.deepEqual(h.read().tickets[submitted.id], oldTicket, failure);
+    assert.match(h.responses.at(-1).b.content, /طلب سابق قيد المراجعة/, failure);
+  }
+});
+
+test('an existing channel omitted from inventory is checked directly and linked without a duplicate', async (t) => {
+  const h = harness(t),
+    submitted = h.interaction();
+  await h.make().handle(submitted);
+  const ticket = h.read().tickets[submitted.id],
+    get = h.api.get;
+  h.api.get = async (route) => {
+    const result = await get(route);
+    return route === `/guilds/${ID}/channels`
+      ? result.filter((c) => c.id !== ticket.channelId)
+      : result;
+  };
+  await h.make().handle(h.interaction());
+  assert.equal(h.created().length, 1);
+  assert.deepEqual(h.read().tickets[submitted.id], ticket);
+  assert.ok(h.responses.at(-1).b.content.includes(`<#${ticket.channelId}>`));
+});
+
+test('a deleted known ticket does not clear another unresolved creation reservation', async (t) => {
+  const h = harness(t),
+    submitted = h.interaction();
+  await h.make().handle(submitted);
+  const state = h.read(),
+    ticket = state.tickets[submitted.id],
+    uncertainId = '999999999999999993';
+  state.tickets[uncertainId] = {
+    ...ticket,
+    number: ticket.number + 1,
+    channelId: null,
+    status: 'unknown',
+  };
+  fs.writeFileSync(h.stateFile, JSON.stringify(state));
+  h.server.state.channels = h.server.state.channels.filter((c) => c.id !== ticket.channelId);
+  await h.make().handle(h.interaction());
+  assert.equal(h.created().length, 1);
+  assert.equal(h.read().tickets[submitted.id].closedReason, 'channel-deleted');
+  assert.equal(h.read().tickets[uncertainId].status, 'unknown');
+  assert.match(h.responses.at(-1).b.content, /طلب سابق قيد المراجعة/);
 });
 
 test('unresolved ambiguous creation blocks retries; conclusive rejection permits a new request', async (t) => {
