@@ -61,9 +61,17 @@ Use the direct https://rss.app/feeds/FEED_ID.xml URL, not an rssviewer.app page.
 
 لربط حساب عام، افتح زر RSS بجانب مصدر Instagram وأدخل رابط XML المباشر، ثم صدّر الحزمة وحدّث التطبيق المستضاف الحالي. تعتمد سرعة التنبيهات على تحديث RSS.app واستمرار خطته أو اشتراكه؛ لا تتجاوز هذه الميزة انتهاء التجربة. أول فحص يسجّل الموجود دون نشره. احتفظ بمجلد data ومتغيرات البيئة عند التحديث.
 
-### Shutdown diagnostics
+### Startup recovery
 
-The exported discloud.config starts Node directly (START=node --env-file-if-exists=.env src/hosted-bot.mjs); npm start remains available for local use. A host SIGINT/SIGTERM logs lifecycle stopping/stopped with its exitCode. Exit code 0 means that requested shutdown completed; it does not prove who sent the signal. Fatal Gateway failures keep exit code 1. If Commit retains the existing start command, review START in the hosting settings to apply the exported command. A dashboard crash label alone cannot identify a code defect: inspect the preceding runtime logs, exit code and memory metrics.
+The entry point installs process error handlers before loading application modules and prints the full error/stack with `console.error`. Missing optional settings use empty disabled configurations. Missing state files are created automatically; empty or corrupt state is moved to a `.corrupt-<id>` backup before safe defaults are written. The active files are `data/social-deliveries.json`, `data/tickets.json`, `data/welcome-deliveries.json` and `data/kick-deliveries.json`; legacy `data/social.json` and `data/welcome.json` are migrated if the active file is missing. A recovered social state establishes a fresh silent baseline. Retain the backups to recover existing ticket records if needed. If storage cannot be recovered, only that feature is disabled instead of sending with volatile state.
+
+Ticket command registration runs in the background and retries after failures. A missing required Discord token or another startup failure logs its cause and waits 120 seconds before retrying; it does not claim that the bot is connected. Run `node scripts/smoke-discloud.mjs` after building to launch the actual entry point from extracted ZIP copies in six startup scenarios, using a fake Gateway and blocking outbound requests. This verifies startup on the local Node runtime, not production credentials or Linux native rendering.
+
+تُنشأ ملفات الحالة المفقودة تلقائياً، وتُحفظ الملفات الفارغة أو التالفة كنسخ `.corrupt-<id>` قبل إنشاء حالة افتراضية آمنة. فشل تسجيل أوامر التذاكر لا يوقف الإقلاع. غياب توكن Discord المطلوب يظهر في السجل مع إعادة المحاولة، ولا يعني نجاح الاتصال.
+
+### Host-requested shutdown
+
+The exported discloud.config starts Node directly (START=node --env-file-if-exists=.env src/hosted-bot.mjs); npm start remains available for local use. A host SIGINT/SIGTERM logs lifecycle stopping/stopped with its exitCode. Exit code 0 means that requested shutdown completed; it does not prove who sent the signal. Terminal Gateway failures stop the session, log the diagnostic code and schedule another startup attempt. If Commit retains the existing start command, review START in the hosting settings to apply the exported command. A dashboard crash label alone cannot identify a code defect: inspect the preceding runtime logs, exit code and memory metrics.
 
 ## Welcome and farewell / الترحيب والمغادرة
 

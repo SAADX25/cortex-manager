@@ -7,7 +7,7 @@ import { setImmediate } from 'node:timers/promises';
 import { EventEmitter } from 'node:events';
 import { createTicketEngine } from '../src/ticket-engine.mjs';
 import { createTicketStore, ticketDefaults, validateTickets } from '../src/ticket-config.mjs';
-import { startHostedBot, hostedStartupDiagnostic } from '../src/hosted-bot.mjs';
+import { startHostedBot } from '../src/hosted-bot.mjs';
 import { GatewaySession } from '../src/gateway.mjs';
 import { DiscordAPI } from '../src/api.mjs';
 import { TICKET_COLORS, IS_COMPONENTS_V2, ticketCardIssue } from '../src/ticket-status.mjs';
@@ -1138,14 +1138,17 @@ test('hosted runtime registers and receives tickets with mocked APIs and drains 
   assert.equal(h.created().length, 1);
   assert.equal(gateway.running, false);
   fs.writeFileSync(path.join(h.dir, 'config/tickets.json'), '{broken');
-  await assert.rejects(
-    startHostedBot({
-      root: h.dir,
-      env: { DISCORD_BOT_TOKEN: 'test' },
-      api: h.api,
-      Gateway,
-      log() {},
-    }),
-    (e) => hostedStartupDiagnostic(e).code === 'INVALID_TICKET_CONFIG',
-  );
+  const logs = [];
+  const recovered = await startHostedBot({
+    root: h.dir,
+    env: { DISCORD_BOT_TOKEN: 'test' },
+    api: h.api,
+    Gateway,
+    log(event) {
+      logs.push(event);
+    },
+  });
+  assert.equal(gateway.running, true);
+  assert.ok(logs.some((event) => event.code === 'INVALID_TICKET_CONFIG_USING_EMPTY'));
+  await recovered.stop();
 });

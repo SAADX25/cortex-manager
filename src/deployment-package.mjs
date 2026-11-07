@@ -182,6 +182,9 @@ export function buildDiscloud({
     throw new Error('Settings changed while building. Run the command again.');
   const report = {
     appId,
+    entrypoint: 'src/hosted-bot.mjs',
+    archiveLayout: 'root',
+    importsVerified: true,
     packageRevision: revision,
     sourceRevision: source,
     builtAt: new Date().toISOString(),

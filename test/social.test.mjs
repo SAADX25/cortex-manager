@@ -620,7 +620,7 @@ test('hosted lifecycle starts independently of stdin and stops without mutations
   await bot.stop();
   assert.equal(instance.running, false);
 });
-test('startup diagnosis distinguishes missing token, missing config and invalid config without leaking credentials', async (t) => {
+test('startup diagnosis identifies required token errors without leaking credentials', async (t) => {
   const root = temp(t),
     secret = 'test-secret-never-log';
   await assert.rejects(
@@ -631,18 +631,6 @@ test('startup diagnosis distinguishes missing token, missing config and invalid 
     startHostedBot({ root, env: { DISCORD_BOT_TOKEN: 'Bot ' + secret }, log() {} }),
     (error) =>
       hostedStartupDiagnostic(error).code === 'INVALID_TOKEN_FORMAT' &&
-      !JSON.stringify(hostedStartupDiagnostic(error)).includes(secret),
-  );
-  await assert.rejects(
-    startHostedBot({ root, env: { DISCORD_BOT_TOKEN: secret }, log() {} }),
-    (error) => hostedStartupDiagnostic(error).code === 'MISSING_FEED_CONFIG',
-  );
-  fs.mkdirSync(path.join(root, 'config'));
-  fs.writeFileSync(path.join(root, 'config/social-feeds.json'), secret);
-  await assert.rejects(
-    startHostedBot({ root, env: { DISCORD_BOT_TOKEN: secret }, log() {} }),
-    (error) =>
-      hostedStartupDiagnostic(error).code === 'INVALID_FEED_CONFIG' &&
       !JSON.stringify(hostedStartupDiagnostic(error)).includes(secret),
   );
   assert.ok(!JSON.stringify(hostedStartupDiagnostic(new Error(secret))).includes(secret));

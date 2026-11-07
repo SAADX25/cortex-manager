@@ -39,6 +39,29 @@ export const HOSTED_FILES = [
   'deploy/Discloud.md',
   'deploy/ENVIRONMENT.example',
 ];
+
+// Verify both static and deferred imports before producing a deployable archive.
+export function verifyHostedFiles(files) {
+  const entry = files['discloud.config']
+    ?.toString()
+    .match(/^MAIN=(.+)$/m)?.[1]
+    ?.trim();
+  if (entry !== 'src/hosted-bot.mjs' || !files[entry] || !files['package.json'])
+    throw new Error('Discloud root layout or MAIN entry point is invalid.');
+  for (const [name, bytes] of Object.entries(files)) {
+    if (!name.endsWith('.mjs')) continue;
+    for (const match of bytes
+      .toString()
+      .matchAll(/\bfrom\s*['"](\.[^'"]+)['"]|\bimport\s*(?:\(\s*)?['"](\.[^'"]+)['"]/g)) {
+      const dependency = path.posix.normalize(
+        path.posix.join(path.posix.dirname(name), match[1] ?? match[2]),
+      );
+      if (!Object.hasOwn(files, dependency))
+        throw new Error(`Missing hosted dependency: ${name} imports ${dependency}`);
+    }
+  }
+  return { entrypoint: entry, archiveLayout: 'root', importsVerified: true };
+}
 const crc32 = (data) => {
   let n = 0xffffffff;
   for (const byte of data) {
@@ -119,5 +142,6 @@ export function hostedPackage(root, config, welcome = emptyWelcome(), tickets = 
   files['config/welcome.json'] = JSON.stringify(welcome, null, 2);
   files['config/tickets.json'] = JSON.stringify(validateTickets(tickets), null, 2);
   files['config/social-feeds.json'] = JSON.stringify(config, null, 2);
+  verifyHostedFiles(files);
   return zipStored(files);
 }

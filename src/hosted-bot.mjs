@@ -1,40 +1,27 @@
-import { createKickNotifications } from './kick-notifications.mjs';
-import { readTicketFile } from './ticket-config.mjs';
-import { createTicketEngine } from './ticket-engine.mjs';
-import { readWelcomeFile } from './welcome-config.mjs';
-import { createWelcomeEngine } from './welcome-engine.mjs';
+// Register before loading application modules, including their transitive dependencies.
+// Keep the full Error/stack in the host logs so startup failures can be diagnosed.
+process.on('uncaughtException', (error, origin) => {
+  console.error('[runtime] uncaughtException', origin, error);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('[runtime] unhandledRejection', reason);
+});
+
 import fs from 'node:fs';
 import path from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { DiscordAPI } from './api.mjs';
-import { GatewaySession, installProcessErrorHandlers } from './gateway.mjs';
-import { validateSocial } from './social-config.mjs';
-import { createSocialProviders } from './social-providers.mjs';
-import { createSocialEngine } from './social-engine.mjs';
 
 const STARTUP_ERRORS = {
-  INVALID_TICKET_CONFIG: 'Ticket settings are invalid; export a fresh package.',
-  INVALID_TICKET_STATE: 'Ticket state is invalid; restore its backup without resetting it.',
-  TICKET_REGISTRATION_FAILED:
-    'Could not register ticket commands. Check bot installation and application permissions.',
-  INVALID_WELCOME_CONFIG: 'Welcome settings are invalid; export a fresh package.',
-  INVALID_KICK_STATE:
-    'Kick notification state is invalid; restore its backup without resetting it.',
-  INVALID_WELCOME_STATE:
-    'Welcome delivery state is invalid; restore its backup without resetting it.',
   MISSING_BOT_TOKEN:
     'DISCORD_BOT_TOKEN is not available to the running process. Check the application variable name, save/apply it and recreate the runtime if necessary.',
   INVALID_TOKEN_FORMAT:
     'DISCORD_BOT_TOKEN must contain only the bot token, without a Bot prefix or KEY=value text.',
-  MISSING_FEED_CONFIG:
-    'config/social-feeds.json is missing. Upload the complete Cortex Social Discloud package.',
   INVALID_FEED_CONFIG:
     'config/social-feeds.json is invalid or unreadable. Export a fresh package from the desktop app.',
-  INVALID_DELIVERY_STATE:
-    'data/social-deliveries.json is invalid or unreadable. Restore its backup; it was not reset.',
   UNSUPPORTED_RUNTIME: 'The runtime needs Node.js >=22.9 with its built-in WebSocket enabled.',
   STARTUP_FAILED:
-    'Unexpected startup failure. Check runtime version and application logs. Credentials were not printed.',
+    'Startup could not complete. See the error and stack below; startup will retry in 120 seconds.',
 };
 const startupFailure = (code) =>
   Object.assign(new Error(STARTUP_ERRORS[code]), { startupCode: code });
@@ -50,7 +37,7 @@ export async function startHostedBot({
   root = fileURLToPath(new URL('../', import.meta.url)),
   api,
   responseAPI,
-  Gateway = GatewaySession,
+  Gateway,
   fetchItems,
   onFatal = () => {},
   log = (event) => process.stdout.write(JSON.stringify(event) + '\n'),
@@ -59,32 +46,107 @@ export async function startHostedBot({
     throw startupFailure('MISSING_BOT_TOKEN');
   const token = env.DISCORD_BOT_TOKEN.trim();
   if (/^Bot\s|^DISCORD_BOT_TOKEN\s*=/i.test(token)) throw startupFailure('INVALID_TOKEN_FORMAT');
-  const configFile = path.join(root, 'config', 'social-feeds.json');
-  const readConfig = () => {
+  // Dynamic imports are inside the caught startup boundary. A missing module now
+  // produces a useful stack and a retry instead of failing before handlers exist.
+  const [
+    { createKickNotifications },
+    { readTicketFile, emptyTickets },
+    { createTicketEngine },
+    { readWelcomeFile, emptyWelcome },
+    { createWelcomeEngine },
+    { DiscordAPI },
+    { GatewaySession },
+    { validateSocial, atomicJSON },
+    { createSocialProviders },
+    { createSocialEngine },
+  ] = await Promise.all([
+    import('./kick-notifications.mjs'),
+    import('./ticket-config.mjs'),
+    import('./ticket-engine.mjs'),
+    import('./welcome-config.mjs'),
+    import('./welcome-engine.mjs'),
+    import('./api.mjs'),
+    import('./gateway.mjs'),
+    import('./social-config.mjs'),
+    import('./social-providers.mjs'),
+    import('./social-engine.mjs'),
+  ]);
+  Gateway ??= GatewaySession;
+  const readOptionalConfig = (file, read, defaults, code) => {
     try {
-      if (fs.statSync(configFile).size > 64000) throw startupFailure('INVALID_FEED_CONFIG');
-      return validateSocial(JSON.parse(fs.readFileSync(configFile, 'utf8')));
+      if (!fs.existsSync(file)) atomicJSON(file, defaults);
+      return read();
     } catch (error) {
-      throw startupFailure(error.code === 'ENOENT' ? 'MISSING_FEED_CONFIG' : 'INVALID_FEED_CONFIG');
+      log({ component: 'startup', status: 'warning', code, file: path.relative(root, file) });
+      return structuredClone(defaults);
     }
   };
+  const stateEngine = (name, defaults, create, disabled, legacy) => {
+    const file = path.join(root, 'data', name + '.json');
+    try {
+      if (!fs.existsSync(file)) {
+        const old = legacy && path.join(root, 'data', legacy + '.json');
+        if (old && fs.existsSync(old)) fs.copyFileSync(old, file);
+        else atomicJSON(file, defaults);
+      }
+      return create(file);
+    } catch (error) {
+      try {
+        // Never discard a corrupt state file: operators can recover ticket IDs
+        // and delivery history from this exact byte-for-byte backup.
+        let backup;
+        if (fs.existsSync(file)) {
+          backup = file + '.corrupt-' + randomUUID();
+          fs.renameSync(file, backup);
+        }
+        atomicJSON(file, defaults);
+        const engine = create(file);
+        log({
+          component: name,
+          status: 'warning',
+          code: 'STATE_RECOVERED',
+          ...(backup ? { backup: path.relative(root, backup) } : {}),
+        });
+        return engine;
+      } catch (recoveryError) {
+        log({ component: name, status: 'warning', code: 'STATE_UNAVAILABLE_FEATURE_DISABLED' });
+        console.error('[startup] State recovery failed:', name, recoveryError);
+        // Disable only this feature if persistence is unavailable. Sending with
+        // volatile delivery state would risk duplicated or untracked messages.
+        return disabled;
+      }
+    }
+  };
+  const configFile = path.join(root, 'config', 'social-feeds.json');
+  const readConfig = () =>
+    readOptionalConfig(
+      configFile,
+      () => {
+        if (fs.statSync(configFile).size > 64000) throw startupFailure('INVALID_FEED_CONFIG');
+        return validateSocial(JSON.parse(fs.readFileSync(configFile, 'utf8')));
+      },
+      { version: 1, feeds: [] },
+      'INVALID_FEED_CONFIG_USING_EMPTY',
+    );
   const initial = readConfig();
   responseAPI ??= api ?? new DiscordAPI(token);
   api ??= new DiscordAPI(token);
   if (Gateway === GatewaySession && typeof globalThis.WebSocket !== 'function')
     throw startupFailure('UNSUPPORTED_RUNTIME');
-  let ticketConfig;
-  try {
-    ticketConfig = readTicketFile(path.join(root, 'config', 'tickets.json'));
-  } catch {
-    throw startupFailure('INVALID_TICKET_CONFIG');
-  }
-  let welcomeConfig;
-  try {
-    welcomeConfig = readWelcomeFile(path.join(root, 'config', 'welcome.json'));
-  } catch {
-    throw startupFailure('INVALID_WELCOME_CONFIG');
-  }
+  const ticketFile = path.join(root, 'config', 'tickets.json');
+  const ticketConfig = readOptionalConfig(
+    ticketFile,
+    () => readTicketFile(ticketFile),
+    emptyTickets(),
+    'INVALID_TICKET_CONFIG_USING_EMPTY',
+  );
+  const welcomeFile = path.join(root, 'config', 'welcome.json');
+  const welcomeConfig = readOptionalConfig(
+    welcomeFile,
+    () => readWelcomeFile(welcomeFile),
+    emptyWelcome(),
+    'INVALID_WELCOME_CONFIG_USING_EMPTY',
+  );
   const kickEnabled = welcomeConfig.guilds.some((g) => g.kick?.enabled);
   const welcomeEnabled =
     kickEnabled || welcomeConfig.guilds.some((g) => g.join.enabled || g.leave.enabled);
@@ -97,62 +159,72 @@ export async function startHostedBot({
     timer = null,
     active = null,
     failed = false;
-  let engine;
-  let tickets;
+  let registrationTimer = null,
+    registration = Promise.resolve();
   const background = (component, work) =>
     Promise.resolve()
       .then(work)
       .catch(() => log({ component, status: 'warning', code: 'BACKGROUND_TASK_FAILED' }));
-  try {
-    tickets = createTicketEngine({
-      api,
-      responseAPI,
-      config: ticketConfig,
-      stateFile: path.join(root, 'data', 'tickets.json'),
-      onStatus: log,
-      isStopping: () => stopped,
-    });
-  } catch {
-    throw startupFailure('INVALID_TICKET_STATE');
-  }
+  const noop = async () => {};
+  const tickets = stateEngine(
+    'tickets',
+    { version: 1, tickets: {}, seen: {} },
+    (stateFile) =>
+      createTicketEngine({
+        api,
+        responseAPI,
+        config: ticketConfig,
+        stateFile,
+        onStatus: log,
+        isStopping: () => stopped,
+      }),
+    { handle: noop, drain: noop, register: noop },
+  );
   gateway.on('interaction', (event) => {
     void background('tickets', () => tickets.handle(event));
   });
-  try {
-    engine = createSocialEngine({
-      api,
-      fetchItems: fetchItems ?? createSocialProviders({ env }),
-      stateFile: path.join(root, 'data', 'social-deliveries.json'),
-      onStatus: log,
-      isStopping: () => stopped,
-    });
-  } catch {
-    throw startupFailure('INVALID_DELIVERY_STATE');
-  }
-  let welcome, kick;
-  try {
-    kick = createKickNotifications({
-      api,
-      config: welcomeConfig,
-      stateFile: path.join(root, 'data', 'kick-deliveries.json'),
-      onStatus: log,
-      isStopping: () => stopped,
-    });
-  } catch {
-    throw startupFailure('INVALID_KICK_STATE');
-  }
-  try {
-    welcome = createWelcomeEngine({
-      api,
-      config: welcomeConfig,
-      suppressFarewell: kick.suppressFarewell,
-      stateFile: path.join(root, 'data', 'welcome-deliveries.json'),
-      onStatus: log,
-      isStopping: () => stopped,
-    });
-  } catch {
-    throw startupFailure('INVALID_WELCOME_STATE');
-  }
+  const engine = stateEngine(
+    'social-deliveries',
+    { version: 1, sources: {} },
+    (stateFile) =>
+      createSocialEngine({
+        api,
+        fetchItems: fetchItems ?? createSocialProviders({ env }),
+        stateFile,
+        onStatus: log,
+        isStopping: () => stopped,
+      }),
+    { tick: noop },
+    'social',
+  );
+  const kick = stateEngine(
+    'kick-deliveries',
+    { version: 1, seen: [] },
+    (stateFile) =>
+      createKickNotifications({
+        api,
+        config: welcomeConfig,
+        stateFile,
+        onStatus: log,
+        isStopping: () => stopped,
+      }),
+    { handle: noop, drain: noop, checkPermissions: noop, suppressFarewell: async () => false },
+  );
+  const welcome = stateEngine(
+    'welcome-deliveries',
+    { version: 1, seen: [] },
+    (stateFile) =>
+      createWelcomeEngine({
+        api,
+        config: welcomeConfig,
+        suppressFarewell: kick.suppressFarewell,
+        stateFile,
+        onStatus: log,
+        isStopping: () => stopped,
+      }),
+    { handle: noop, drain: noop },
+    'welcome',
+  );
   gateway.on('audit-event', (entry) => {
     void background('kick', () => kick.handle(entry));
   });
@@ -183,11 +255,13 @@ export async function startHostedBot({
     if (stopped) return;
     stopped = true;
     clearTimeout(timer);
+    clearTimeout(registrationTimer);
     gateway.stop();
     await active;
     await welcome.drain();
     await kick.drain();
     await tickets.drain();
+    await registration;
     await kickPermissionCheck;
   }
   gateway.on('status', (event) => {
@@ -216,10 +290,23 @@ export async function startHostedBot({
       });
     }
   });
-  try {
-    await tickets.register();
-  } catch {
-    throw startupFailure('TICKET_REGISTRATION_FAILED');
+  async function registerTickets() {
+    if (stopped) return;
+    try {
+      await tickets.register();
+    } catch (error) {
+      log({
+        component: 'tickets',
+        status: 'warning',
+        code: 'TICKET_REGISTRATION_FAILED',
+        retryMs: 120000,
+      });
+      console.error('[tickets] Command registration failed:', error);
+      if (!stopped)
+        registrationTimer = setTimeout(() => {
+          registration = registerTickets();
+        }, 120000);
+    }
   }
   log({
     component: 'startup',
@@ -235,6 +322,7 @@ export async function startHostedBot({
     ? background('kick', () => kick.checkPermissions())
     : Promise.resolve();
   gateway.start();
+  registration = registerTickets();
   if (!stopped) active = cycle();
   return {
     stop,
@@ -291,16 +379,42 @@ export function installHostedShutdown(
   };
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  installProcessErrorHandlers();
-  try {
-    const bot = await startHostedBot({
-      onFatal: () => {
-        process.exitCode = 1;
-      },
-    });
-    installHostedShutdown(bot);
-  } catch (error) {
-    process.stderr.write(JSON.stringify(hostedStartupDiagnostic(error)) + '\n');
-    process.exitCode = 1;
+  let bot = null,
+    retryTimer = null,
+    stopping = false;
+  installHostedShutdown({
+    get failed() {
+      return false;
+    },
+    async stop() {
+      stopping = true;
+      clearTimeout(retryTimer);
+      await bot?.stop();
+    },
+  });
+  function retry() {
+    if (!stopping)
+      retryTimer = setTimeout(() => {
+        void boot();
+      }, 120000);
   }
+  async function boot() {
+    try {
+      bot = await startHostedBot({ onFatal: retry });
+      if (stopping) await bot.stop();
+    } catch (error) {
+      console.error('[startup]', hostedStartupDiagnostic(error), error);
+      retry();
+    }
+  }
+  console.log(
+    JSON.stringify({
+      component: 'startup',
+      status: 'booting',
+      nodeVersion: process.versions.node,
+      platform: process.platform,
+      arch: process.arch,
+    }),
+  );
+  void boot();
 }
