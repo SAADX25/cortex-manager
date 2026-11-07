@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { GatewaySession, gatewayURL } from '../src/gateway.mjs';
+import { GatewaySession, gatewayURL, installProcessErrorHandlers } from '../src/gateway.mjs';
+import { EventEmitter } from 'node:events';
+import { spawnSync } from 'node:child_process';
 import { diagnostics } from '../src/desktop-worker.mjs';
 import { sample } from './helpers/fake.mjs';
 
@@ -102,6 +104,76 @@ test('Gateway only permits official secure Discord hosts', () => {
     'wss://gateway.discord.gg:444',
   ])
     assert.throws(() => gatewayURL(value));
+});
+
+test('process guards contain exceptions and rejections without logging secrets', () => {
+  const runtime = new EventEmitter(),
+    logs = [];
+  const dispose = installProcessErrorHandlers({ runtime, log: (event) => logs.push(event) });
+  runtime.emit('uncaughtException', new Error('SECRET'));
+  runtime.emit('unhandledRejection', { token: 'SECRET' });
+  assert.deepEqual(
+    logs.map((event) => event.code),
+    ['uncaughtException', 'unhandledRejection'],
+  );
+  assert.ok(logs.every((event) => event.status === 'warning'));
+  assert.ok(!JSON.stringify(logs).includes('SECRET'));
+  dispose();
+  assert.equal(runtime.listenerCount('uncaughtException'), 0);
+  assert.equal(runtime.listenerCount('unhandledRejection'), 0);
+  const child = spawnSync(
+    process.execPath,
+    [
+      '--input-type=module',
+      '-e',
+      `
+    import { installProcessErrorHandlers } from ${JSON.stringify(new URL('../src/gateway.mjs', import.meta.url).href)};
+    installProcessErrorHandlers();
+    Promise.reject(new Error('SECRET'));
+    setTimeout(() => { throw new Error('SECRET'); }, 5);
+    setTimeout(() => console.log('still running'), 30);
+  `,
+    ],
+    { encoding: 'utf8', timeout: 5000 },
+  );
+  assert.equal(child.status, 0, child.stderr);
+  assert.match(child.stdout, /still running/);
+  assert.match(child.stderr, /unhandledRejection/);
+  assert.match(child.stderr, /uncaughtException/);
+  assert.ok(!child.stderr.includes('SECRET'));
+});
+
+test('heartbeat send failures reconnect without throwing or leaving heartbeat timers', async () => {
+  const e = environment(),
+    socket = await e.start();
+  e.hello(socket);
+  e.ready(socket);
+  socket.send = () => {
+    throw new Error('network closed');
+  };
+  await e.step();
+  assert.equal(socket.closeCode, 4000);
+  assert.equal(e.pending.size, 1);
+  assert.equal([...e.pending.values()][0].ms, 5000);
+  assert.ok(e.states.some((event) => event.status === 'warning'));
+  e.session.stop();
+});
+
+test('rejected gateway event listeners are contained', async () => {
+  const e = environment(),
+    socket = await e.start();
+  e.hello(socket);
+  e.ready(socket);
+  e.session.receiveInteractions = true;
+  e.session.on('interaction', async () => {
+    throw new Error('SECRET');
+  });
+  socket.packet({ op: 0, t: 'INTERACTION_CREATE', d: {} });
+  await e.flush();
+  assert.equal(e.session.running, true);
+  assert.equal(e.states.at(-1).status, 'warning');
+  assert.ok(!JSON.stringify(e.states).includes('SECRET'));
+  e.session.stop();
 });
 test('presence Identify uses zero intents, receives READY, and logs no token', async () => {
   const e = environment(),

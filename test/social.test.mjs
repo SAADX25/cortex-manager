@@ -429,6 +429,121 @@ test('provider errors back off and isolate destinations; concurrent ticks do not
   assert.equal(await pending, true);
   await engine.tick(config());
 });
+
+test('blocked and dead RSS providers skip with backoff while healthy subscriptions still deliver', async (t) => {
+  for (const status of [402, 403, 404, 410, 429, 'html', 'empty', 'network', 'stream']) {
+    const h = harness(t);
+    let clock = Date.parse('2026-10-30T10:00:00Z'),
+      broken = false,
+      rssCalls = 0;
+    const statuses = [],
+      f = feed({ id: 'instagram', platform: 'instagram', source: 'creator', rssURL });
+    const providers = createSocialProviders({
+      env: {},
+      fetchImpl: async () => {
+        rssCalls++;
+        if (!broken) return new Response(rss());
+        if (status === 'network') throw new Error('SECRET');
+        if (status === 'stream')
+          return new Response(
+            new ReadableStream({
+              start(controller) {
+                controller.error(new Error('SECRET'));
+              },
+            }),
+          );
+        return new Response(status === 'html' ? '<html>payment required</html>' : '', {
+          status: typeof status === 'number' ? status : 200,
+          headers: { 'Retry-After': '600' },
+        });
+      },
+    });
+    const engine = createSocialEngine({
+      api: h.api,
+      stateFile: h.stateFile,
+      now: () => clock,
+      onStatus: (event) => statuses.push(event),
+      fetchItems: (f) =>
+        f.platform === 'instagram'
+          ? providers(f)
+          : Promise.resolve([item('youtube-' + clock, clock - 1)]),
+    });
+    await engine.tick(config([f, feed()]));
+    const baseline = JSON.parse(fs.readFileSync(h.stateFile)).sources.instagram;
+    broken = true;
+    clock += 120001;
+    assert.equal(await engine.tick(config([f, feed()])), true);
+    assert.equal(h.server.calls.length, 1, String(status));
+    const warning = statuses.findLast((event) => event.id === f.id);
+    assert.equal(warning.level, 'warning');
+    assert.equal(warning.source, 'creator');
+    assert.equal(warning.provider, 'rss.app');
+    if (typeof status === 'number') {
+      assert.equal(warning.status, 'skipped');
+      assert.equal(warning.httpStatus, status);
+    }
+    assert.ok(warning.retryMs >= 300000);
+    const saved = JSON.parse(fs.readFileSync(h.stateFile)).sources.instagram;
+    assert.deepEqual(saved.seen, baseline.seen);
+    assert.equal(saved.since, baseline.since);
+    clock += 120001;
+    await engine.tick(config([f, feed()]));
+    assert.equal(rssCalls, 2, 'backoff: ' + status);
+    assert.equal(h.server.calls.length, 2);
+    assert.ok(!JSON.stringify(statuses).includes('SECRET'));
+  }
+});
+
+test('first blocked provider response never establishes a false baseline and reports actual retry', async (t) => {
+  const h = harness(t),
+    statuses = [];
+  let clock = 1000,
+    fail = true,
+    calls = 0;
+  const engine = createSocialEngine({
+    api: h.api,
+    stateFile: h.stateFile,
+    now: () => clock,
+    onStatus: (event) => statuses.push(event),
+    fetchItems: async () => {
+      calls++;
+      if (fail)
+        throw new ProviderError('Provider returned HTTP 402.', 3600000, {
+          httpStatus: 402,
+          skip: true,
+        });
+      return [item('old', clock - 1)];
+    },
+  });
+  await engine.tick(config());
+  assert.equal(statuses[0].retryMs, 3600000);
+  assert.equal(fs.existsSync(h.stateFile), false);
+  clock += 300001;
+  await engine.tick(config());
+  assert.equal(calls, 1);
+  clock += 3600000;
+  fail = false;
+  await engine.tick(config());
+  assert.equal(statuses.at(-1).status, 'baseline');
+  assert.equal(h.server.calls.length, 0);
+});
+
+test('non-Error provider rejection does not abort remaining subscriptions', async (t) => {
+  const h = harness(t),
+    statuses = [];
+  const isolated = createSocialEngine({
+    api: h.api,
+    stateFile: h.stateFile,
+    onStatus: (event) => statuses.push(event),
+    fetchItems: async (f) => {
+      if (f.id === 'bad') throw null;
+      return [];
+    },
+  });
+  await isolated.tick(config([feed({ id: 'bad', source: 'UC' + 'b'.repeat(22) }), feed()]));
+  assert.equal(statuses[0].status, 'error');
+  assert.equal(statuses[1].status, 'baseline');
+});
 test('package contains only allowlisted source, nonsecret configuration and root startup files', () => {
   const zip = hostedPackage(root, config()),
     names = [],

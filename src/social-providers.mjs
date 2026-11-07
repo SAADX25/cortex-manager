@@ -1,10 +1,13 @@
 import { sourceId, mediaURL } from './social-config.mjs';
-import { instagramRSSURL, instagramRSSItems } from './instagram-rss.mjs';
+import { instagramRSSURL, instagramRSSItems, InstagramRSSError } from './instagram-rss.mjs';
 
 export class ProviderError extends Error {
-  constructor(message, retryMs = 300000) {
+  constructor(message, retryMs = 300000, { httpStatus, skip = false } = {}) {
     super(message);
+    this.name = 'ProviderError';
     this.retryMs = retryMs;
+    this.httpStatus = httpStatus;
+    this.skip = skip;
   }
 }
 // Fixed official endpoints only. Never follow a redirect with an API credential.
@@ -24,15 +27,25 @@ export async function boundedFetch(
   } catch {
     throw new ProviderError('Provider connection failed.');
   }
-  if (!r.ok)
+  const cancel = async () => {
+    try {
+      await r.body?.cancel();
+    } catch {}
+  };
+  if (!r.ok) {
+    await cancel();
     throw new ProviderError(
       `Provider returned HTTP ${r.status}.`,
       r.status === 429
         ? Math.min(3600000, Math.max(120000, (Number(r.headers.get('retry-after')) || 300) * 1000))
-        : 300000,
+        : r.status === 402 || r.status === 403
+          ? 3600000
+          : 300000,
+      { httpStatus: r.status, skip: [402, 403, 404, 410, 429].includes(r.status) },
     );
+  }
   if (Number(r.headers.get('content-length')) > 1048576) {
-    await r.body?.cancel();
+    await cancel();
     throw new ProviderError('Provider response too large.');
   }
   const reader = r.body?.getReader();
@@ -47,6 +60,9 @@ export async function boundedFetch(
       if (size > 1048576) throw new ProviderError('Provider response too large.');
       chunks.push(Buffer.from(value));
     }
+  } catch (error) {
+    if (error instanceof ProviderError) throw error;
+    throw new ProviderError('Provider response interrupted.');
   } finally {
     await reader.cancel().catch(() => {});
   }
@@ -102,11 +118,21 @@ export function createSocialProviders({
   };
   return async function fetchItems(feed) {
     const source = sourceId(feed.platform, feed.source);
-    if (feed.platform === 'instagram' && feed.rssURL)
-      return instagramRSSItems(
-        await boundedFetch(instagramRSSURL(feed.rssURL), { fetchImpl }),
-        source,
-      );
+    if (feed.platform === 'instagram' && feed.rssURL) {
+      try {
+        return instagramRSSItems(
+          await boundedFetch(instagramRSSURL(feed.rssURL), { fetchImpl }),
+          source,
+        );
+      } catch (error) {
+        if (error instanceof ProviderError) throw error;
+        throw new ProviderError(
+          error instanceof InstagramRSSError ? error.message : 'Invalid Instagram RSS response.',
+          300000,
+          { skip: true },
+        );
+      }
+    }
     if (feed.platform === 'youtube')
       return youtubeItems(
         await boundedFetch(`https://www.youtube.com/feeds/videos.xml?channel_id=${source}`, {
@@ -187,7 +213,8 @@ export function createSocialProviders({
               }).toString(),
             }),
           );
-        } catch {
+        } catch (error) {
+          if (error instanceof ProviderError) throw error;
           throw new ProviderError('Kick application authentication failed.');
         }
         if (typeof token.access_token !== 'string' || !Number.isFinite(Number(token.expires_in)))

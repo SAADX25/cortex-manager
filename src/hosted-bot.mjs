@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { DiscordAPI } from './api.mjs';
-import { GatewaySession } from './gateway.mjs';
+import { GatewaySession, installProcessErrorHandlers } from './gateway.mjs';
 import { validateSocial } from './social-config.mjs';
 import { createSocialProviders } from './social-providers.mjs';
 import { createSocialEngine } from './social-engine.mjs';
@@ -99,6 +99,10 @@ export async function startHostedBot({
     failed = false;
   let engine;
   let tickets;
+  const background = (component, work) =>
+    Promise.resolve()
+      .then(work)
+      .catch(() => log({ component, status: 'warning', code: 'BACKGROUND_TASK_FAILED' }));
   try {
     tickets = createTicketEngine({
       api,
@@ -112,7 +116,7 @@ export async function startHostedBot({
     throw startupFailure('INVALID_TICKET_STATE');
   }
   gateway.on('interaction', (event) => {
-    void tickets.handle(event);
+    void background('tickets', () => tickets.handle(event));
   });
   try {
     engine = createSocialEngine({
@@ -150,10 +154,10 @@ export async function startHostedBot({
     throw startupFailure('INVALID_WELCOME_STATE');
   }
   gateway.on('audit-event', (entry) => {
-    void kick.handle(entry);
+    void background('kick', () => kick.handle(entry));
   });
   gateway.on('member-event', (event) => {
-    void welcome.handle(event);
+    void background('welcome', () => welcome.handle(event));
   });
   async function cycle() {
     if (stopped) return;
@@ -161,7 +165,7 @@ export async function startHostedBot({
       await engine.tick(readConfig());
     } catch (error) {
       log(
-        error.startupCode
+        error?.startupCode
           ? hostedStartupDiagnostic(error)
           : {
               status: 'config-or-storage-error',
@@ -203,7 +207,13 @@ export async function startHostedBot({
     });
     if (event.status === 'error' && !gateway.running) {
       failed = true;
-      void stop().then(onFatal);
+      void background('lifecycle', async () => {
+        try {
+          await stop();
+        } finally {
+          await onFatal();
+        }
+      });
     }
   });
   try {
@@ -221,7 +231,9 @@ export async function startHostedBot({
     ticketsEnabled: ticketConfig.guilds.some((g) => g.enabled),
     nodeVersion: process.versions.node,
   });
-  const kickPermissionCheck = kickEnabled ? kick.checkPermissions() : Promise.resolve();
+  const kickPermissionCheck = kickEnabled
+    ? background('kick', () => kick.checkPermissions())
+    : Promise.resolve();
   gateway.start();
   if (!stopped) active = cycle();
   return {
@@ -279,6 +291,7 @@ export function installHostedShutdown(
   };
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  installProcessErrorHandlers();
   try {
     const bot = await startHostedBot({
       onFatal: () => {

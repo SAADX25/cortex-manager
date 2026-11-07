@@ -1,5 +1,11 @@
 // Deliberately limited to RSS.app RSS 2.0 feeds. No DTDs, external entities,
 // script execution, arbitrary feed hosts or redirects are supported.
+export class InstagramRSSError extends Error {
+  constructor(message = 'Invalid Instagram RSS XML.') {
+    super(message);
+    this.name = 'InstagramRSSError';
+  }
+}
 export function instagramRSSURL(value) {
   if (typeof value !== 'string' || value.length > 500)
     throw new Error('Use the direct RSS.app XML feed URL.');
@@ -23,7 +29,7 @@ export function instagramRSSURL(value) {
   return url.href;
 }
 const bad = () => {
-  throw new Error('Invalid Instagram RSS XML.');
+  throw new InstagramRSSError();
 };
 function decode(text) {
   return text.replace(/&(?:amp|lt|gt|quot|apos|#\d+|#x[\da-f]+);/gi, (value) => {
@@ -130,7 +136,7 @@ export function instagramRSSItems(xml, username) {
     bad();
   }
   if (owner !== username.toLowerCase())
-    throw new Error('Instagram RSS feed belongs to a different account.');
+    throw new InstagramRSSError('Instagram RSS feed belongs to a different account.');
   const items = channel.children.filter((c) => c.name === 'item');
   if (items.length > 100) bad();
   const seen = new Set();

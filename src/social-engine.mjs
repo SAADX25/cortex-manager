@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { atomicJSON, validateSocial, mediaURL } from './social-config.mjs';
 import { snapshot } from './api.mjs';
 import { messageProtection } from './messages.mjs';
+import { ProviderError } from './social-providers.mjs';
 
 const hash = (value) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 export function notificationContent(feed, item) {
@@ -151,23 +152,36 @@ export function createSocialEngine({
           persist();
           onStatus({ id: feed.id, status: 'checked', delivered: selected.length });
         } catch (error) {
+          const retryMs =
+            Number.isFinite(error?.retryMs) && error.retryMs >= 0 ? error.retryMs : 300000;
+          const skipped = error instanceof ProviderError && error.skip;
+          const status = skipped ? 'skipped' : 'error';
           // Persist backoff even if the first provider request fails. Keep baseline unset until success.
           if (entry) {
             entry.failures++;
             entry.nextAt =
               now() +
-              Math.max(
-                error.retryMs ?? 0,
-                Math.min(3600000, 120000 * 2 ** Math.min(entry.failures, 5)),
-              );
-            entry.lastStatus = 'error';
+              Math.max(retryMs, Math.min(3600000, 120000 * 2 ** Math.min(entry.failures, 5)));
+            entry.lastStatus = status;
             persist();
-          } else initialRetries.set(signature, now() + Math.max(300000, error.retryMs ?? 0));
+          } else initialRetries.set(signature, now() + Math.max(300000, retryMs));
           onStatus({
             id: feed.id,
-            status: 'error',
-            message: error.message,
-            retryMs: entry ? entry.nextAt - now() : 300000,
+            platform: feed.platform,
+            source: feed.source,
+            provider: feed.rssURL ? 'rss.app' : feed.platform,
+            status,
+            ...(error instanceof ProviderError
+              ? { level: 'warning', httpStatus: error.httpStatus }
+              : {}),
+            message:
+              typeof error?.message === 'string' ? error.message : 'Subscription check failed.',
+            ...(skipped
+              ? {
+                  hint: 'Provider unavailable; subscription skipped until the next retry. Update or disable it if this persists.',
+                }
+              : {}),
+            retryMs: entry ? entry.nextAt - now() : initialRetries.get(signature) - now(),
           });
         }
       }

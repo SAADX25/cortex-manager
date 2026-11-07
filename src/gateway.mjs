@@ -1,6 +1,28 @@
 import { EventEmitter } from 'node:events';
 import { DiscordAPI } from './api.mjs';
 
+// Install once at the executable boundary, not when this library is imported by the desktop app.
+// Never print arbitrary exception messages: network errors can contain credentials or payloads.
+export function installProcessErrorHandlers({
+  runtime = process,
+  log = (event) => process.stderr.write(JSON.stringify(event) + '\n'),
+} = {}) {
+  const handlers = Object.fromEntries(
+    ['uncaughtException', 'unhandledRejection'].map((event) => [
+      event,
+      () => {
+        try {
+          log({ component: 'runtime', status: 'warning', code: event });
+        } catch {}
+      },
+    ]),
+  );
+  for (const [event, handler] of Object.entries(handlers)) runtime.on(event, handler);
+  return () => {
+    for (const [event, handler] of Object.entries(handlers)) runtime.removeListener(event, handler);
+  };
+}
+
 export function gatewayURL(value) {
   const url = new URL(value);
   if (
@@ -31,7 +53,8 @@ export class GatewaySession extends EventEmitter {
       receiveInteractions = false,
     } = {},
   ) {
-    super();
+    super({ captureRejections: true });
+    this.on('error', () => this.state('warning', 'Gateway event handler failed.'));
     if (![0, 3, 7].includes(intents)) throw new Error('Unsupported Gateway intents.');
     this.intents = intents;
     this.receiveInteractions = receiveInteractions;
@@ -105,11 +128,19 @@ export class GatewaySession extends EventEmitter {
     this.schedule(ms);
   }
   send(op, d) {
-    if (this.socket?.readyState === 1) this.socket.send(JSON.stringify({ op, d }));
+    if (this.socket?.readyState !== 1) return false;
+    try {
+      this.socket.send(JSON.stringify({ op, d }));
+      return true;
+    } catch {
+      this.state('warning', 'Gateway send failed; reconnecting.');
+      this.reconnect(5000);
+      return false;
+    }
   }
   heartbeat() {
     this.awaitingAck = true;
-    this.send(1, this.sequence);
+    return this.send(1, this.sequence);
   }
   tick(interval) {
     this.heartbeatTimer = this.timers.setTimeout(() => {
@@ -118,8 +149,7 @@ export class GatewaySession extends EventEmitter {
         this.reconnect();
         return;
       }
-      this.heartbeat();
-      this.tick(interval);
+      if (this.heartbeat()) this.tick(interval);
     }, interval);
   }
   async connect() {
@@ -185,12 +215,12 @@ export class GatewaySession extends EventEmitter {
       });
     } catch (error) {
       if (!this.running) return;
-      if (/HTTP 40[13]|Sharding|Invalid Discord Gateway/.test(error.message)) {
+      if (/HTTP 40[13]|Sharding|Invalid Discord Gateway/.test(error?.message ?? '')) {
         this.running = false;
         this.state('error', error.message);
         return;
       }
-      this.state('error', 'تعذّر الاتصال؛ ستتم المحاولة مجدداً.');
+      this.state('warning', 'تعذّر الاتصال؛ ستتم المحاولة مجدداً.');
       this.schedule(Math.min(30000, 1000 * 2 ** Math.min(++this.attempts, 5)));
     }
   }
@@ -232,16 +262,16 @@ export class GatewaySession extends EventEmitter {
       // Following heartbeats use the actual interval, not the initial jitter.
       this.heartbeatTimer = this.timers.setTimeout(
         () => {
-          this.heartbeat();
-          this.tick(interval);
+          if (this.running && this.heartbeat()) this.tick(interval);
         },
         Math.max(1, Math.floor(interval * this.random())),
       );
+      let sent;
       if (this.session)
-        this.send(6, { token: this.token, session_id: this.session, seq: this.sequence });
+        sent = this.send(6, { token: this.token, session_id: this.session, seq: this.sequence });
       else {
         this.nextIdentifyAt = this.now() + 5500;
-        this.send(2, {
+        sent = this.send(2, {
           token: this.token,
           intents: this.intents,
           properties: {
@@ -257,7 +287,7 @@ export class GatewaySession extends EventEmitter {
           },
         });
       }
-      this.handshakeTimer = this.timers.setTimeout(() => this.reconnect(5000), 30000);
+      if (sent) this.handshakeTimer = this.timers.setTimeout(() => this.reconnect(5000), 30000);
     } else if (packet.op === 11) this.awaitingAck = false;
     else if (packet.op === 1) this.heartbeat();
     else if (packet.op === 7) this.reconnect(1000);
